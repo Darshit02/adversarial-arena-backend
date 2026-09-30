@@ -1,0 +1,180 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: arena_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-arena_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-arena_secure_password}
+      POSTGRES_DB: ${POSTGRES_DB:-adversarial_arena}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - arena-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-arena_user} -d ${POSTGRES_DB:-adversarial_arena}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: arena_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - arena-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: arena_api
+    restart: unless-stopped
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      - ./app:/app/app:ro
+      - ./alembic:/app/alembic:ro
+      - ./alembic.ini:/app/alembic.ini:ro
+    environment:
+      APP_ENV: development
+      APP_DEBUG: "true"
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-arena_user}:${POSTGRES_PASSWORD:-arena_secure_password}@postgres:5432/${POSTGRES_DB:-adversarial_arena}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-dGhpcy1pcy1hLTMyLWJ5dGUtc2VjcmV0LWtleS1mb3ItZGV2IQ==}
+      CLERK_JWKS_URL: ${CLERK_JWKS_URL:-https://api.clerk.dev/v1/jwks}
+      CLERK_ISSUER: ${CLERK_ISSUER:-https://clerk.your-domain.com}
+      OLLAMA_BASE_URL: http://ollama:11434
+      RUN_MIGRATIONS: "true"
+    ports:
+      - "8000:8000"
+    networks:
+      - arena-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    container_name: arena_worker
+    restart: unless-stopped
+    volumes:
+      - ./app:/app/app:ro
+    environment:
+      APP_ENV: development
+      APP_DEBUG: "true"
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-arena_user}:${POSTGRES_PASSWORD:-arena_secure_password}@postgres:5432/${POSTGRES_DB:-adversarial_arena}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-dGhpcy1pcy1hLTMyLWJ5dGUtc2VjcmV0LWtleS1mb3ItZGV2IQ==}
+      OLLAMA_BASE_URL: http://ollama:11434
+    networks:
+      - arena-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app:celery_app inspect ping || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  flower:
+    image: mher/flower:2.0
+    container_name: arena_flower
+    restart: unless-stopped
+    profiles: ["dev"]
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      FLOWER_PORT: 5555
+    ports:
+      - "5555:5555"
+    networks:
+      - arena-net
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:5555/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: arena_ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - arena-net
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list > /dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: arena_mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+    networks:
+      - arena-net
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 1025 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+networks:
+  arena-net:
+    driver: bridge
+    name: arena-net
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  ollama_models:
+    driver: local

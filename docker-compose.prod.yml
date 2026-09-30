@@ -1,0 +1,33 @@
+services:
+  api:
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+    volumes: []
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      LOG_JSON: "true"
+      RUN_MIGRATIONS: "false"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2048M
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+  worker:
+    command: ["celery", "-A", "app.workers.celery_app:celery_app", "worker", "--loglevel=info", "--concurrency=8", "-E"]
+    volumes: []
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      LOG_JSON: "true"
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 4096M
+        reservations:
+          cpus: "1.0"
+          memory: 1024M
