@@ -90,8 +90,15 @@ class ModelProviderError(AppException):
 
 class OrchestrationError(AppException):
     status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
-    title = "Attack Orchestration Error"
+    title = "Orchestration Error"
     problem_type = "https://arena.security/errors/orchestration-error"
+
+
+class WhiteboxRequiredError(AppException):
+    status_code = status.HTTP_400_BAD_REQUEST
+    title = "Whitebox Access Required"
+    problem_type = "https://arena.security/errors/whitebox-required"
+
 
 
 def register_error_handlers(app: FastAPI) -> None:
