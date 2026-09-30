@@ -58,7 +58,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-dGhpcy1pcy1hLTMyLWJ5dGUtc2VjcmV0LWtleS1mb3ItZGV2IQ==}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-2j8S9k_wwrYCfONyKkMNUmsik6l3Xm-uIWEkS6ENLjY=}
       CLERK_JWKS_URL: ${CLERK_JWKS_URL:-https://api.clerk.dev/v1/jwks}
       CLERK_ISSUER: ${CLERK_ISSUER:-https://clerk.your-domain.com}
       OLLAMA_BASE_URL: http://ollama:11434
