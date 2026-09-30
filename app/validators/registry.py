@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from typing import Any
+
 from app.validators.base import BaseValidator
 
 _VALIDATOR_REGISTRY: dict[str, type[BaseValidator]] = {}
@@ -21,7 +22,9 @@ def register_validator(name: str) -> Callable[[type[BaseValidator]], type[BaseVa
 def get_validator_class(name: str) -> type[BaseValidator]:
     """Retrieve registered validator class by identifier."""
     if name not in _VALIDATOR_REGISTRY:
-        raise KeyError(f"Validator '{name}' is not registered. Available: {list(_VALIDATOR_REGISTRY.keys())}")
+        raise KeyError(
+            f"Validator '{name}' is not registered. Available: {list(_VALIDATOR_REGISTRY.keys())}"
+        )
     return _VALIDATOR_REGISTRY[name]
 
 

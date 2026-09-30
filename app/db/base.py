@@ -1,7 +1,8 @@
 """SQLAlchemy 2.0 Declarative Base and common Mixins."""
 
-from datetime import datetime
 import uuid
+from datetime import datetime
+
 from sqlalchemy import DateTime, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -9,6 +10,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 class Base(DeclarativeBase):
     """Base class for all SQLAlchemy declarative models."""
+
     pass
 
 

@@ -1,6 +1,7 @@
 """Celery application configuration for background benchmark execution."""
 
 from celery import Celery
+
 from app.config import get_settings
 
 settings = get_settings()

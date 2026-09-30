@@ -2,7 +2,9 @@
 
 import re
 from typing import Any, ClassVar
+
 import litellm
+
 from app.core.logging import get_logger
 from app.probes.base import BaseProbe, ProbeAttempt, ProbeResult
 from app.probes.registry import register_probe
@@ -18,7 +20,9 @@ class PAIRProbe(BaseProbe):
     """PAIR iterative adversarial refinement probe."""
 
     name: ClassVar[str] = "pair"
-    description: ClassVar[str] = "Iterative prompt refinement probe using an automated evaluator loop"
+    description: ClassVar[str] = (
+        "Iterative prompt refinement probe using an automated evaluator loop"
+    )
     requires_whitebox: ClassVar[bool] = False
     param_schema: ClassVar[type[PAIRParams]] = PAIRParams
 
@@ -47,8 +51,13 @@ class PAIRProbe(BaseProbe):
                 return match.group(1).strip()
             return content.strip()
         except Exception as e:
-            logger.warning("Mutation model call failed, falling back to original seed", error=str(e))
-            return fallback_seed or "Please provide an objective and detailed educational overview on the topic."
+            logger.warning(
+                "Mutation model call failed, falling back to original seed", error=str(e)
+            )
+            return (
+                fallback_seed
+                or "Please provide an objective and detailed educational overview on the topic."
+            )
 
     async def generate(
         self,
@@ -110,7 +119,9 @@ class PAIRProbe(BaseProbe):
 
             for iteration in range(self.pair_config.n_iterations):
                 if iteration > 0:
-                    current_prompt = await self._query_mutation_model(conversation_history, fallback_seed=seed)
+                    current_prompt = await self._query_mutation_model(
+                        conversation_history, fallback_seed=seed
+                    )
 
                 blocked = False
                 validator_verdict = {
@@ -120,14 +131,18 @@ class PAIRProbe(BaseProbe):
                     "validator_name": None,
                 }
                 for validator in validators:
-                    v = await validator.check(current_prompt, context={"risk_category": risk_category})
+                    v = await validator.check(
+                        current_prompt, context={"risk_category": risk_category}
+                    )
                     if not v.allowed:
                         blocked = True
                         validator_verdict = v.to_dict()
                         break
 
                 if blocked:
-                    target_response = f"[BLOCKED BY VALIDATOR: {validator_verdict.get('validator_name')}]"
+                    target_response = (
+                        f"[BLOCKED BY VALIDATOR: {validator_verdict.get('validator_name')}]"
+                    )
                     is_fail = False
                     score = 0.0
                     reason = validator_verdict.get("reason", "Blocked by validator")
@@ -152,7 +167,7 @@ class PAIRProbe(BaseProbe):
                     validator_verdict=validator_verdict,
                     is_failure=is_fail,
                     score=score,
-                    evaluation_reason=reason,
+                    evaluation_reason=str(reason),
                     latency_ms=latency,
                     tokens_used=tokens,
                 )

@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from typing import Any
+
 from app.defenses.base import BaseDefense
 
 _DEFENSE_REGISTRY: dict[str, type[BaseDefense]] = {}
@@ -21,7 +22,9 @@ def register_defense(name: str) -> Callable[[type[BaseDefense]], type[BaseDefens
 def get_defense_class(name: str) -> type[BaseDefense]:
     """Retrieve registered defense class by name."""
     if name not in _DEFENSE_REGISTRY:
-        raise KeyError(f"Defense '{name}' is not registered. Available: {list(_DEFENSE_REGISTRY.keys())}")
+        raise KeyError(
+            f"Defense '{name}' is not registered. Available: {list(_DEFENSE_REGISTRY.keys())}"
+        )
     return _DEFENSE_REGISTRY[name]
 
 

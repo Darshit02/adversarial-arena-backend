@@ -2,10 +2,10 @@
 
 import time
 from typing import Any
+
 from langgraph.graph import END, START, StateGraph
 from redis.asyncio import Redis
 
-from app.config import get_settings
 from app.core.logging import get_logger
 from app.engine.evaluator import (
     aggregate_by_category,
@@ -37,10 +37,15 @@ class OrchestrationContext:
         self.mut = mut or MockTargetModel()
         self.validators = validators or []
         self.redis = redis
+        self.current_probe_idx: int = 0
         self.probes: list[BaseProbe] = []
         self.attempts: list[ProbeAttempt] = []
         self.current_attempt: ProbeAttempt | None = None
-        self.current_verdict: dict[str, Any] = {"allowed": True, "reason": "Passed", "confidence": 1.0}
+        self.current_verdict: dict[str, Any] = {
+            "allowed": True,
+            "reason": "Passed",
+            "confidence": 1.0,
+        }
         self.current_response: str = ""
         self.current_latency: float = 0.0
         self.current_tokens: int = 0
@@ -67,6 +72,7 @@ async def _check_abort_signal(run_id: str, redis: Redis | None) -> bool:
 # LangGraph Node Handlers
 # ------------------------------------------------------------------------------
 
+
 async def setup_node(state: RunState) -> dict[str, Any]:
     """Initialize orchestration context, instantiate probes and validators."""
     run_id = state["run_id"]
@@ -89,6 +95,7 @@ async def setup_node(state: RunState) -> dict[str, Any]:
         ctx.probes.append(p_cls(params=p_params, mut=ctx.mut))
 
     # Pre-generate attempts for the first probe
+    ctx.current_probe_idx = 0
     if ctx.probes:
         ctx.attempts = await ctx.probes[0].generate(
             seed_prompts=config.seed_prompts,
@@ -113,7 +120,22 @@ async def probe_mutate_node(state: RunState) -> dict[str, Any]:
     if await _check_abort_signal(run_id, ctx.redis if ctx else None):
         return {"status": "aborted"}
 
-    if not ctx or not ctx.attempts:
+    if not ctx or not ctx.probes:
+        return {"status": "completed"}
+
+    probe_idx = state.get("current_probe_idx", 0)
+    if probe_idx >= len(ctx.probes):
+        return {"status": "completed"}
+
+    # If probe changed, generate attempts for the new probe
+    if probe_idx != ctx.current_probe_idx:
+        ctx.current_probe_idx = probe_idx
+        ctx.attempts = await ctx.probes[probe_idx].generate(
+            seed_prompts=state["config"].seed_prompts,
+            risk_category=state["config"].risk_category,
+        )
+
+    if not ctx.attempts:
         return {"status": "completed"}
 
     attempt_idx = state.get("current_attempt_idx", 0)
@@ -137,11 +159,15 @@ async def validator_chain_node(state: RunState) -> dict[str, Any]:
     ctx.current_verdict = {"allowed": True, "reason": "Passed all validators", "confidence": 1.0}
 
     for validator in ctx.validators:
-        verdict = await validator.check(prompt, context={"risk_category": state["config"].risk_category})
+        verdict = await validator.check(
+            prompt, context={"risk_category": state["config"].risk_category}
+        )
         if not verdict.allowed:
             ctx.is_blocked = True
             ctx.current_verdict = verdict.to_dict()
-            ctx.current_response = f"[BLOCKED BY VALIDATOR: {verdict.validator_name}] {verdict.reason}"
+            ctx.current_response = (
+                f"[BLOCKED BY VALIDATOR: {verdict.validator_name}] {verdict.reason}"
+            )
             ctx.current_latency = 5.0
             ctx.current_tokens = 0
             break
@@ -184,7 +210,8 @@ async def evaluation_node(state: RunState) -> dict[str, Any]:
     prompt = ctx.current_attempt.cumulative_prompt
     response = ctx.current_response
     attempt_idx = state.get("current_attempt_idx", 0)
-    current_probe = ctx.probes[state.get("current_probe_idx", 0)]
+    probe_idx = state.get("current_probe_idx", 0)
+    current_probe = ctx.probes[probe_idx]
 
     if ctx.is_blocked:
         is_fail = False
@@ -209,9 +236,17 @@ async def evaluation_node(state: RunState) -> dict[str, Any]:
     )
 
     next_attempt_idx = attempt_idx + 1
+    next_probe_idx = probe_idx
+
+    # If this probe finished all its attempts, advance to next probe
+    if next_attempt_idx >= len(ctx.attempts):
+        next_probe_idx = probe_idx + 1
+        next_attempt_idx = 0
+
     return {
         "results": [result],
         "current_attempt_idx": next_attempt_idx,
+        "current_probe_idx": next_probe_idx,
     }
 
 
@@ -254,6 +289,7 @@ async def finalize_node(state: RunState) -> dict[str, Any]:
 # Conditional Edge Router
 # ------------------------------------------------------------------------------
 
+
 def route_after_evaluation(state: RunState) -> str:
     """Decide whether to execute more attempts, transition to next probe, or finalize."""
     if state.get("status") == "aborted":
@@ -261,26 +297,22 @@ def route_after_evaluation(state: RunState) -> str:
 
     run_id = state["run_id"]
     ctx = _ACTIVE_CONTEXTS.get(run_id)
-    if not ctx:
+    if not ctx or not ctx.probes:
         return "finalize"
 
-    attempt_idx = state.get("current_attempt_idx", 0)
-    if attempt_idx < len(ctx.attempts):
-        return "probe_mutate"
+    probe_idx = state.get("current_probe_idx", 0)
 
-    # Check if more probes remain
-    probe_idx = state.get("current_probe_idx", 0) + 1
-    if probe_idx < len(ctx.probes):
-        state["current_probe_idx"] = probe_idx
-        state["current_attempt_idx"] = 0
-        return "probe_mutate"
+    # Check if all probes completed
+    if probe_idx >= len(ctx.probes):
+        return "finalize"
 
-    return "finalize"
+    return "probe_mutate"
 
 
 # ------------------------------------------------------------------------------
 # StateGraph Builder
 # ------------------------------------------------------------------------------
+
 
 def build_orchestrator_graph() -> Any:
     """Construct the compiled LangGraph StateGraph for benchmark runs."""

@@ -1,20 +1,18 @@
 """Integration tests for Celery tasks, RunService, and ReportService."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 import pytest
-from app.engine.state import RunConfig, RunMetrics
-from app.schemas.run import RunCreate
-from app.services.evaluation_service import evaluation_service
+
 from app.services.probe_service import probe_service
 from app.services.report_service import report_service
-from app.services.run_service import run_service
 
 
 @pytest.mark.asyncio
 async def test_report_service_pdf_generation_mock(monkeypatch):
     """Test ReportService generates non-empty PDF bytes and JSON report structure."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     fake_run_id = uuid.uuid4()
     fake_target_id = uuid.uuid4()
 
@@ -35,7 +33,9 @@ async def test_report_service_pdf_generation_mock(monkeypatch):
         updated_at = now
         error_message = None
         report_url = None
-        target_model = type("TargetModel", (), {"id": fake_target_id, "name": "Test LLM", "provider": "openai"})()
+        target_model = type(
+            "TargetModel", (), {"id": fake_target_id, "name": "Test LLM", "provider": "openai"}
+        )()
         metrics = {"rfr": 0.25, "validator_blocks": 1, "average_latency_ms": 120.0}
         results = [
             type(
@@ -114,7 +114,7 @@ async def test_report_service_compare_runs(monkeypatch):
     run_b_id = uuid.uuid4()
 
     def make_fake_run(run_id, name, rfr, latency):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return type(
             "FakeRun",
             (),
@@ -135,7 +135,9 @@ async def test_report_service_compare_runs(monkeypatch):
                 "completed_at": now,
                 "created_at": now,
                 "updated_at": now,
-                "target_model": type("TargetModel", (), {"id": uuid.uuid4(), "name": "MUT", "provider": "openai"})(),
+                "target_model": type(
+                    "TargetModel", (), {"id": uuid.uuid4(), "name": "MUT", "provider": "openai"}
+                )(),
                 "metrics": {"rfr": rfr, "average_latency_ms": latency},
                 "results": [],
             },

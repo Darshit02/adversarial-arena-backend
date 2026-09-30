@@ -1,14 +1,15 @@
 """Validator configurations CRUD endpoints."""
 
 import uuid
+
 from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_current_org, get_db
-from app.core.errors import NotFoundError, ValidationError
+from app.core.errors import NotFoundError
 from app.db.models.defense_config import DefenseConfig
 from app.db.models.organization import Organization
+from app.dependencies import get_current_org, get_db
 from app.schemas.common import ResponseEnvelope
 from app.schemas.defense import (
     DefenseConfigCreate,
@@ -42,7 +43,9 @@ async def list_validators(
     return ResponseEnvelope.success(data)
 
 
-@router.post("", response_model=ResponseEnvelope[DefenseConfigResponse], status_code=status.HTTP_201_CREATED)
+@router.post(
+    "", response_model=ResponseEnvelope[DefenseConfigResponse], status_code=status.HTTP_201_CREATED
+)
 async def create_validator(
     payload: DefenseConfigCreate,
     org: Organization = Depends(get_current_org),

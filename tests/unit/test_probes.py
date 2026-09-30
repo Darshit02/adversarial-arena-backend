@@ -1,6 +1,7 @@
 """Unit tests for pluggable probe implementations."""
 
 import pytest
+
 from app.core.errors import WhiteboxRequiredError
 from app.probes import (
     AutoDANParams,
@@ -15,7 +16,7 @@ from app.probes import (
     list_registered_probes,
 )
 from app.schemas.attack import PAIRParams
-from app.targets.base import GenerationResult, TargetModel
+from app.targets.base import GenerationResult
 from app.validators.keyword_filter import KeywordFilterValidator
 
 
@@ -191,7 +192,9 @@ async def test_probe_validator_blocking(mock_mut, keyword_validator):
     probe = MultiRoundProbe(params=params, mut=mock_mut)
 
     # Seed with blocked keyword
-    results = await probe.run(["This query contains BLOCKED_KEYWORD in it"], "general", keyword_validator)
+    results = await probe.run(
+        ["This query contains BLOCKED_KEYWORD in it"], "general", keyword_validator
+    )
     assert len(results) == 1
     assert "[BLOCKED BY VALIDATOR" in results[0].response
     assert results[0].is_failure is False

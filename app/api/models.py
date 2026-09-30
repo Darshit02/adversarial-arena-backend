@@ -2,20 +2,20 @@
 
 import time
 import uuid
+
 from fastapi import APIRouter, Depends, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_current_org, get_db
 from app.core.errors import NotFoundError
 from app.core.security import fernet_manager
 from app.db.models.organization import Organization
 from app.db.models.target_model import TargetModelConfig
+from app.dependencies import get_current_org, get_db
 from app.schemas.common import ResponseEnvelope
 from app.schemas.model import (
     TargetModelCreate,
     TargetModelResponse,
-    TargetModelUpdate,
     TestConnectionRequest,
     TestConnectionResponse,
 )
@@ -59,7 +59,9 @@ async def list_models(
     return ResponseEnvelope.success(data)
 
 
-@router.post("", response_model=ResponseEnvelope[TargetModelResponse], status_code=status.HTTP_201_CREATED)
+@router.post(
+    "", response_model=ResponseEnvelope[TargetModelResponse], status_code=status.HTTP_201_CREATED
+)
 async def create_model(
     payload: TargetModelCreate,
     org: Organization = Depends(get_current_org),

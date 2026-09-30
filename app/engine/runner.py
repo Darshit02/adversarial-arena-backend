@@ -1,18 +1,16 @@
 """Async execution runner coordinating database persistence, Redis pub/sub streaming, and the orchestrator."""
 
 import json
-from datetime import datetime, timezone
-import structlog
+from datetime import UTC, datetime
+
 from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.config import get_settings
 from app.core.logging import get_logger
-from app.db.models.attack_result import AttackResult
 from app.db.models.defense_config import DefenseConfig
 from app.db.models.run import Run
-from app.db.models.target_model import TargetModelConfig
 from app.db.session import async_session_factory
 from app.engine.orchestrator import run_graph
 from app.engine.state import RunConfig, RunMetrics
@@ -57,10 +55,19 @@ async def execute_run(
     async def _publish_event(event_type: str, data: dict):
         if redis_client is not None:
             try:
-                payload = json.dumps({"event": event_type, "run_id": run_id, "timestamp": datetime.now(timezone.utc).isoformat(), "data": data})
+                payload = json.dumps(
+                    {
+                        "event": event_type,
+                        "run_id": run_id,
+                        "timestamp": datetime.now(UTC).isoformat(),
+                        "data": data,
+                    }
+                )
                 await redis_client.publish(channel_name, payload)
             except Exception as e:
-                log.warning("Failed to publish Redis run event", event_type=event_type, error=str(e))
+                log.warning(
+                    "Failed to publish Redis run event", event_type=event_type, error=str(e)
+                )
 
     try:
         # 1. Load run from DB (or use mock_run_config for tests)
@@ -72,11 +79,7 @@ async def execute_run(
             config = mock_run_config
         else:
             async with async_session_factory() as session:
-                stmt = (
-                    select(Run)
-                    .options(selectinload(Run.target_model))
-                    .where(Run.id == run_id)
-                )
+                stmt = select(Run).options(selectinload(Run.target_model)).where(Run.id == run_id)
                 res = await session.execute(stmt)
                 run_record = res.scalar_one_or_none()
 
@@ -85,7 +88,7 @@ async def execute_run(
 
                 # Mark run as running
                 run_record.status = "running"
-                run_record.started_at = datetime.now(timezone.utc)
+                run_record.started_at = datetime.now(UTC)
                 await session.commit()
 
                 # Instantiate ModelUnderTest from DB config
@@ -93,7 +96,9 @@ async def execute_run(
 
                 # Load validators from DB
                 if run_record.defense_ids:
-                    v_stmt = select(DefenseConfig).where(DefenseConfig.id.in_(run_record.defense_ids))
+                    v_stmt = select(DefenseConfig).where(
+                        DefenseConfig.id.in_(run_record.defense_ids)
+                    )
                     v_res = await session.execute(v_stmt)
                     for v_model in v_res.scalars():
                         v_cls = get_validator_class(v_model.defense_type)
@@ -129,7 +134,7 @@ async def execute_run(
                 res = await session.execute(stmt)
                 db_run = res.scalar_one()
                 db_run.status = "completed"
-                db_run.completed_at = datetime.now(timezone.utc)
+                db_run.completed_at = datetime.now(UTC)
                 db_run.metrics = metrics.model_dump()
                 await session.commit()
 
@@ -151,11 +156,11 @@ async def execute_run(
             async with async_session_factory() as session:
                 stmt = select(Run).where(Run.id == run_id)
                 res = await session.execute(stmt)
-                db_run = res.scalar_one_or_none()
-                if db_run:
-                    db_run.status = "failed"
-                    db_run.error_message = str(e)
-                    db_run.completed_at = datetime.now(timezone.utc)
+                failed_db_run = res.scalar_one_or_none()
+                if failed_db_run:
+                    failed_db_run.status = "failed"
+                    failed_db_run.error_message = str(e)
+                    failed_db_run.completed_at = datetime.now(UTC)
                     await session.commit()
         except Exception:
             pass
@@ -164,4 +169,4 @@ async def execute_run(
 
     finally:
         if should_close_redis and redis_client is not None:
-            await redis_client.aclose()
+            await redis_client.close()

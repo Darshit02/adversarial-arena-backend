@@ -5,6 +5,7 @@ import io
 import os
 import uuid
 from typing import Any
+
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -26,7 +27,9 @@ class ReportService:
     def __init__(self) -> None:
         self.settings = get_settings()
 
-    async def _fetch_run_with_results(self, session: AsyncSession, run_id: uuid.UUID) -> tuple[Run, list[AttackResult]]:
+    async def _fetch_run_with_results(
+        self, session: AsyncSession, run_id: uuid.UUID
+    ) -> tuple[Run, list[AttackResult]]:
         stmt = (
             select(Run)
             .options(selectinload(Run.target_model), selectinload(Run.results))
@@ -38,7 +41,9 @@ class ReportService:
             raise NotFoundError(f"Run '{run_id}' not found.")
         return run_record, run_record.results
 
-    async def generate_json_report(self, session: AsyncSession, run_id: uuid.UUID) -> dict[str, Any]:
+    async def generate_json_report(
+        self, session: AsyncSession, run_id: uuid.UUID
+    ) -> dict[str, Any]:
         """Produce structured JSON evaluation report."""
         run, results = await self._fetch_run_with_results(session, run_id)
         return {
@@ -48,7 +53,9 @@ class ReportService:
             "status": run.status,
             "risk_category": run.harm_category,
             "target_model": {
-                "id": str(getattr(run, "target_model_id", getattr(run.target_model, "id", "unknown"))),
+                "id": str(
+                    getattr(run, "target_model_id", getattr(run.target_model, "id", "unknown"))
+                ),
                 "name": run.target_model.name if run.target_model else "Unknown",
                 "provider": run.target_model.provider if run.target_model else "Unknown",
             },
@@ -117,7 +124,9 @@ class ReportService:
         """Generate high-resolution PDF evaluation report using ReportLab."""
         run, results = await self._fetch_run_with_results(session, run_id)
         buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
+        doc = SimpleDocTemplate(
+            buffer, pagesize=letter, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36
+        )
         styles = getSampleStyleSheet()
 
         title_style = ParagraphStyle(
@@ -137,13 +146,6 @@ class ReportService:
             spaceBefore=12,
             spaceAfter=6,
         )
-        body_style = ParagraphStyle(
-            "Body",
-            parent=styles["Normal"],
-            fontSize=10,
-            leading=14,
-            textColor=colors.HexColor("#4A5568"),
-        )
 
         elements = []
         elements.append(Paragraph("Adversarial Arena — Robustness Benchmark Report", title_style))
@@ -154,7 +156,12 @@ class ReportService:
         meta_data = [
             ["Run Name:", run.name, "Status:", run.status.upper()],
             ["Model Under Test:", model_name, "Risk Category:", run.harm_category],
-            ["Started At:", str(run.started_at or "N/A"), "Completed At:", str(run.completed_at or "N/A")],
+            [
+                "Started At:",
+                str(run.started_at or "N/A"),
+                "Completed At:",
+                str(run.completed_at or "N/A"),
+            ],
         ]
         meta_table = Table(meta_data, colWidths=[120, 160, 100, 160])
         meta_table.setStyle(
@@ -181,7 +188,13 @@ class ReportService:
 
         elements.append(Paragraph("Executive Summary", heading2_style))
         summary_data = [
-            ["Robustness Failure Rate (RFR)", "Total Probes", "Failed Probes", "Validator Blocks", "Avg Latency"],
+            [
+                "Robustness Failure Rate (RFR)",
+                "Total Probes",
+                "Failed Probes",
+                "Validator Blocks",
+                "Avg Latency",
+            ],
             [f"{rfr * 100:.1f}%", str(total), str(fails), str(blocks), f"{avg_lat:.1f} ms"],
         ]
         summary_table = Table(summary_data, colWidths=[160, 90, 90, 100, 100])
@@ -194,8 +207,18 @@ class ReportService:
                     ("FONTSIZE", (0, 0), (-1, -1), 10),
                     ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                     ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E0")),
-                    ("BACKGROUND", (0, 1), (0, 1), colors.HexColor("#FFF5F5") if rfr > 0.3 else colors.HexColor("#F0FFF4")),
-                    ("TEXTCOLOR", (0, 1), (0, 1), colors.HexColor("#C53030") if rfr > 0.3 else colors.HexColor("#22543D")),
+                    (
+                        "BACKGROUND",
+                        (0, 1),
+                        (0, 1),
+                        colors.HexColor("#FFF5F5") if rfr > 0.3 else colors.HexColor("#F0FFF4"),
+                    ),
+                    (
+                        "TEXTCOLOR",
+                        (0, 1),
+                        (0, 1),
+                        colors.HexColor("#C53030") if rfr > 0.3 else colors.HexColor("#22543D"),
+                    ),
                     ("FONTNAME", (0, 1), (0, 1), "Helvetica-Bold"),
                 ]
             )

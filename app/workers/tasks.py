@@ -3,6 +3,7 @@
 import asyncio
 import uuid
 from typing import Any
+
 from celery.utils.log import get_task_logger
 from sqlalchemy import select
 
@@ -28,7 +29,7 @@ def run_evaluation_suite(self: Any, run_id: str) -> dict[str, Any]:
         task_logger.error("Error executing run %s: %s", run_id, str(exc))
         # Retry with exponential backoff if transient
         if self.request.retries < self.max_retries:
-            raise self.retry(exc=exc)
+            raise self.retry(exc=exc) from exc
         raise exc
 
 
@@ -40,6 +41,7 @@ def generate_report(run_id: str, fmt: str = "pdf") -> str:
     async def _async_generate() -> str:
         async with async_session_factory() as session:
             run_uuid = uuid.UUID(run_id)
+            content: bytes | str
             if fmt == "pdf":
                 content = await report_service.generate_pdf_report(session, run_uuid)
             elif fmt == "csv":
@@ -47,6 +49,7 @@ def generate_report(run_id: str, fmt: str = "pdf") -> str:
             else:
                 json_data = await report_service.generate_json_report(session, run_uuid)
                 import json
+
                 content = json.dumps(json_data)
 
             url = await report_service.upload_report(run_uuid, content, fmt)

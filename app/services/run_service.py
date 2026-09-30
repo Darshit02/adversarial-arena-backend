@@ -1,7 +1,8 @@
 """Run service managing benchmark lifecycle, pagination, abortion, and Celery task dispatch."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from redis.asyncio import Redis
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -58,6 +59,7 @@ class RunService:
         # 3. Enqueue Celery task asynchronously
         try:
             from app.workers.tasks import run_evaluation_suite
+
             run_evaluation_suite.delay(str(run.id))
         except Exception:
             # If broker is offline during local test execution, keep run pending
@@ -167,10 +169,10 @@ class RunService:
                 await redis_client.setex(f"run:{run_id}:abort", 3600, "1")
             finally:
                 if should_close:
-                    await redis_client.aclose()
+                    await redis_client.close()
 
         run.status = "aborted"
-        run.completed_at = datetime.now(timezone.utc)
+        run.completed_at = datetime.now(UTC)
         await session.commit()
         await session.refresh(run)
         return run

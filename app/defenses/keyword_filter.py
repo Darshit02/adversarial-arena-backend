@@ -2,6 +2,7 @@
 
 import re
 from typing import Any, ClassVar
+
 from app.defenses.base import BaseDefense, DefenseVerdict
 from app.defenses.registry import register_defense
 from app.schemas.defense import KeywordFilterParams

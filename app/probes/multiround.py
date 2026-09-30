@@ -1,8 +1,10 @@
 """Multi-turn progressive dialogue probe implementation (Crescendo / Escalation)."""
 
 from typing import Any, ClassVar, Literal
+
 import litellm
 from pydantic import BaseModel, ConfigDict, Field
+
 from app.core.logging import get_logger
 from app.probes.base import BaseProbe, ProbeAttempt, ProbeResult
 from app.probes.registry import register_probe
@@ -18,7 +20,9 @@ class MultiRoundParams(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     num_turns: int = Field(default=5, ge=2, le=20, description="Total dialogue turns")
-    mutation_model: str = Field(default="gpt-4o-mini", description="Model guiding dialogue mutation")
+    mutation_model: str = Field(
+        default="gpt-4o-mini", description="Model guiding dialogue mutation"
+    )
     escalation_strategy: Literal["linear", "crescendo"] = Field(
         default="crescendo",
         description="Escalation trajectory: linear incremental or crescendo benign-to-critical",
@@ -31,14 +35,18 @@ class MultiRoundProbe(BaseProbe):
     """Multi-turn progressive conversational escalation probe."""
 
     name: ClassVar[str] = "multiround"
-    description: ClassVar[str] = "Multi-turn progressive escalation probe across multi-round conversational turns"
+    description: ClassVar[str] = (
+        "Multi-turn progressive escalation probe across multi-round conversational turns"
+    )
     requires_whitebox: ClassVar[bool] = False
     param_schema: ClassVar[type[MultiRoundParams]] = MultiRoundParams
 
     def __init__(self, params: MultiRoundParams | dict[str, Any], mut: TargetModel) -> None:
         super().__init__(params=params, mut=mut)
         self.mr_config: MultiRoundParams = (
-            self.params if isinstance(self.params, MultiRoundParams) else MultiRoundParams(**self.params)  # type: ignore
+            self.params
+            if isinstance(self.params, MultiRoundParams)
+            else MultiRoundParams(**self.params)  # type: ignore
         )
 
     async def _generate_turn_prompt(
@@ -102,7 +110,10 @@ class MultiRoundProbe(BaseProbe):
             return query or seed, rationale
         except Exception as e:
             logger.warning("Multi-turn LLM generation fallback triggered", error=str(e))
-            return f"Regarding {seed}, what are the key theoretical principles? (Turn {turn_index + 1})", "Heuristic progression"
+            return (
+                f"Regarding {seed}, what are the key theoretical principles? (Turn {turn_index + 1})",
+                "Heuristic progression",
+            )
 
     async def generate(
         self,
@@ -160,14 +171,18 @@ class MultiRoundProbe(BaseProbe):
                     "validator_name": None,
                 }
                 for validator in validators:
-                    v = await validator.check(turn_prompt, context={"risk_category": risk_category, "turn": turn})
+                    v = await validator.check(
+                        turn_prompt, context={"risk_category": risk_category, "turn": turn}
+                    )
                     if not v.allowed:
                         blocked = True
                         validator_verdict = v.to_dict()
                         break
 
                 if blocked:
-                    response_text = f"[BLOCKED BY VALIDATOR: {validator_verdict.get('validator_name')}]"
+                    response_text = (
+                        f"[BLOCKED BY VALIDATOR: {validator_verdict.get('validator_name')}]"
+                    )
                     is_fail = False
                     score = 0.0
                     reason = validator_verdict.get("reason", "Blocked")
@@ -203,7 +218,7 @@ class MultiRoundProbe(BaseProbe):
                     validator_verdict=validator_verdict,
                     is_failure=is_fail,
                     score=score,
-                    evaluation_reason=reason,
+                    evaluation_reason=str(reason),
                     latency_ms=latency,
                     tokens_used=tokens,
                     turn_history=turn_records,

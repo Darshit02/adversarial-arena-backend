@@ -5,9 +5,10 @@ Zou et al., 2023: 'Universal and Transferable Adversarial Attacks on Aligned Lan
 """
 
 import asyncio
-import time
 from typing import Any, ClassVar
+
 from pydantic import BaseModel, ConfigDict, Field
+
 from app.core.errors import WhiteboxRequiredError
 from app.core.logging import get_logger
 from app.probes.base import BaseProbe, ProbeAttempt, ProbeResult
@@ -28,8 +29,12 @@ class GCGParams(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    num_steps: int = Field(default=500, ge=5, le=2000, description="Gradient coordinate descent iterations")
-    suffix_length: int = Field(default=20, ge=4, le=100, description="Adversarial suffix token length")
+    num_steps: int = Field(
+        default=500, ge=5, le=2000, description="Gradient coordinate descent iterations"
+    )
+    suffix_length: int = Field(
+        default=20, ge=4, le=100, description="Adversarial suffix token length"
+    )
     top_k: int = Field(default=256, ge=16, le=1024, description="Top-k token gradient candidates")
     batch_size: int = Field(default=32, ge=1, le=128, description="Candidate evaluation batch size")
 
@@ -48,6 +53,7 @@ def _run_gcg_sync_worker(
     We isolate tensor gradient descent inside a dedicated worker function and call it via
     asyncio.to_thread() to prevent stalling the asynchronous event loop during long-running iterations.
     """
+    _ = (top_k, batch_size, mut)
     # Initial dummy suffix of length suffix_len
     candidate_suffix = "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !"[: suffix_len * 2].strip()
     best_loss = float("inf")
@@ -73,7 +79,9 @@ class GCGProbe(BaseProbe):
     """Greedy Coordinate Gradient (GCG) white-box token gradient search probe."""
 
     name: ClassVar[str] = "gcg"
-    description: ClassVar[str] = "White-box token-level coordinate gradient optimization requiring direct logit access"
+    description: ClassVar[str] = (
+        "White-box token-level coordinate gradient optimization requiring direct logit access"
+    )
     requires_whitebox: ClassVar[bool] = True
     param_schema: ClassVar[type[GCGParams]] = GCGParams
 

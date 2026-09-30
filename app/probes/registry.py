@@ -2,8 +2,8 @@
 
 from collections.abc import Callable
 from typing import Any
+
 from app.probes.base import BaseProbe
-from app.schemas.attack import RegisteredAttackInfo
 
 _PROBE_REGISTRY: dict[str, type[BaseProbe]] = {}
 
@@ -22,7 +22,9 @@ def register_probe(name: str) -> Callable[[type[BaseProbe]], type[BaseProbe]]:
 def get_probe_class(name: str) -> type[BaseProbe]:
     """Retrieve registered probe class by name."""
     if name not in _PROBE_REGISTRY:
-        raise KeyError(f"Probe '{name}' not found. Available probes: {list(_PROBE_REGISTRY.keys())}")
+        raise KeyError(
+            f"Probe '{name}' not found. Available probes: {list(_PROBE_REGISTRY.keys())}"
+        )
     return _PROBE_REGISTRY[name]
 
 

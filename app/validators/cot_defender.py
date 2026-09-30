@@ -1,6 +1,7 @@
 """Chain-of-Thought (CoT) deliberation validator."""
 
 from typing import Any, ClassVar
+
 from app.schemas.defense import CoTDefenderParams
 from app.validators.base import BaseValidator, ValidatorVerdict
 from app.validators.registry import register_validator

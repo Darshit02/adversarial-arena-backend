@@ -2,7 +2,9 @@
 
 import math
 from typing import Any, Generic, TypeVar
+
 from pydantic import BaseModel, ConfigDict, Field
+
 from app.core.errors import ProblemDetail
 
 T = TypeVar("T")
@@ -30,8 +32,12 @@ class ResponseEnvelope(BaseModel, Generic[T]):
     model_config = ConfigDict(extra="ignore")
 
     data: T | None = Field(default=None, description="Response payload")
-    meta: PaginationMeta | dict[str, Any] | None = Field(default=None, description="Metadata or pagination details")
-    error: ProblemDetail | None = Field(default=None, description="RFC 7807 problem details if failure occurred")
+    meta: PaginationMeta | dict[str, Any] | None = Field(
+        default=None, description="Metadata or pagination details"
+    )
+    error: ProblemDetail | None = Field(
+        default=None, description="RFC 7807 problem details if failure occurred"
+    )
 
     @classmethod
     def success(

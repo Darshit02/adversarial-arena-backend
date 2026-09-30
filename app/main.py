@@ -1,12 +1,13 @@
 """FastAPI application factory, lifespan hooks, CORS, RequestID middleware, and Prometheus metrics."""
 
-from contextlib import asynccontextmanager
 import time
 import uuid
+from contextlib import asynccontextmanager
+
+import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from prometheus_client import Counter, Histogram, make_asgi_app
-import structlog
+from prometheus_client import Counter, Histogram
 from redis.asyncio import Redis
 
 from app.api.router import api_v1_router
@@ -20,13 +21,17 @@ logger = get_logger(__name__)
 
 # Prometheus metrics definition
 RUNS_TOTAL = Counter("arena_runs_total", "Total benchmark evaluation runs", ["status"])
-ATTACKS_TOTAL = Counter("arena_attacks_total", "Total adversarial probe attempts", ["attack_type", "success"])
-LLM_LATENCY = Histogram("arena_llm_latency_seconds", "Latency of ModelUnderTest queries", ["provider", "model"])
+ATTACKS_TOTAL = Counter(
+    "arena_attacks_total", "Total adversarial probe attempts", ["attack_type", "success"]
+)
+LLM_LATENCY = Histogram(
+    "arena_llm_latency_seconds", "Latency of ModelUnderTest queries", ["provider", "model"]
+)
 DEFENSE_BLOCKS = Counter("arena_defense_blocks_total", "Total validator interventions", ["defense"])
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     """Lifespan context manager: initialization, connection check, and graceful teardown."""
     settings = get_settings()
     setup_logging()
@@ -41,7 +46,7 @@ async def lifespan(app: FastAPI):
             await jwks_manager.get_jwks(redis=redis)
         except Exception:
             pass
-        await redis.aclose()
+        await redis.close()
     except Exception as e:
         logger.warning("Redis not available on startup", error=str(e))
 
@@ -105,8 +110,8 @@ def create_app() -> FastAPI:
     register_error_handlers(app)
 
     # 4. Prometheus metrics endpoint
-    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
     from fastapi import Response
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
     @app.get("/metrics", tags=["Observability"])
     async def metrics_endpoint():

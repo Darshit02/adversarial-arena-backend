@@ -1,6 +1,7 @@
 """Database session management and connection pooling."""
 
 from collections.abc import AsyncGenerator
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -8,6 +9,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+
 from app.config import get_settings
 from app.core.logging import get_logger
 

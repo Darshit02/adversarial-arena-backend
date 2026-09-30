@@ -3,7 +3,9 @@
 import json
 import re
 from typing import Any, ClassVar
+
 import litellm
+
 from app.core.logging import get_logger
 from app.defenses.base import BaseDefense, DefenseVerdict
 from app.defenses.registry import register_defense

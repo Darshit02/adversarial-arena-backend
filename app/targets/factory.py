@@ -1,6 +1,5 @@
 """Target model factory for instantiating model adapters from database configurations."""
 
-from typing import Any
 from app.core.security import fernet_manager
 from app.db.models.target_model import TargetModelConfig
 from app.targets.base import TargetModel
@@ -15,7 +14,9 @@ class TargetModelFactory:
     @staticmethod
     def create_from_config(config: TargetModelConfig) -> TargetModel:
         """Instantiate TargetModel from a SQLAlchemy TargetModelConfig model."""
-        decrypted_key = fernet_manager.decrypt(config.encrypted_api_key) if config.encrypted_api_key else None
+        decrypted_key = (
+            fernet_manager.decrypt(config.encrypted_api_key) if config.encrypted_api_key else None
+        )
         provider = config.provider.lower().strip()
 
         if provider in ("mock", "test"):

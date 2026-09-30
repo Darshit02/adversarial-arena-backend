@@ -5,9 +5,10 @@ from typing import Any, Protocol, runtime_checkable
 
 try:
     import torch
-    TensorType = torch.Tensor
+
+    type TensorType = torch.Tensor
 except ImportError:
-    TensorType = Any  # type: ignore
+    type TensorType = Any  # type: ignore[no-redef]
 
 
 @dataclass

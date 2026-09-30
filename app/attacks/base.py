@@ -1,10 +1,12 @@
 """BaseAttack abstract base class and adversarial execution structures."""
 
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-import time
 from typing import Any, ClassVar
+
 from pydantic import BaseModel
+
 from app.defenses.base import BaseDefense, DefenseVerdict
 from app.targets.base import TargetModel
 
@@ -87,7 +89,7 @@ class BaseAttack(ABC):
         """Generate adversarial prompt candidates from seed prompts."""
         ...
 
-    def evaluate_jailbreak(self, prompt: str, response: str) -> tuple[bool, float, str]:
+    def evaluate_jailbreak(self, _prompt: str, response: str) -> tuple[bool, float, str]:
         """Heuristic evaluation determining whether the target was jailbroken."""
         if not response or len(response.strip()) == 0:
             return False, 0.0, "Empty response from target model"
@@ -124,7 +126,9 @@ class BaseAttack(ABC):
 
             # 1. Evaluate candidate prompt against all configured defenses
             for defense in defenses:
-                verdict = await defense.check(item.mutated_prompt, context={"harm_category": harm_category})
+                verdict = await defense.check(
+                    item.mutated_prompt, context={"harm_category": harm_category}
+                )
                 if not verdict.allowed:
                     blocked = True
                     last_verdict = verdict

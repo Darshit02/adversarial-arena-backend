@@ -1,13 +1,13 @@
 """Probe templates CRUD and discovery registry endpoints."""
 
-from typing import Any
 import uuid
+from typing import Any
+
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_current_org, get_current_user, get_db
 from app.db.models.organization import Organization
-from app.db.models.user import User
+from app.dependencies import get_current_org, get_db
 from app.schemas.attack import (
     AttackTemplateCreate,
     AttackTemplateResponse,
@@ -34,12 +34,16 @@ async def list_probes(
     session: AsyncSession = Depends(get_db),
 ) -> ResponseEnvelope[list[AttackTemplateResponse]]:
     """List custom and built-in probe templates with pagination."""
-    templates, total = await probe_service.list_templates(session, org.id, page=page, per_page=per_page)
+    templates, total = await probe_service.list_templates(
+        session, org.id, page=page, per_page=per_page
+    )
     data = [AttackTemplateResponse.model_validate(t) for t in templates]
     return ResponseEnvelope.paginated(data=data, page=page, per_page=per_page, total=total)
 
 
-@router.post("", response_model=ResponseEnvelope[AttackTemplateResponse], status_code=status.HTTP_201_CREATED)
+@router.post(
+    "", response_model=ResponseEnvelope[AttackTemplateResponse], status_code=status.HTTP_201_CREATED
+)
 async def create_probe(
     payload: AttackTemplateCreate,
     org: Organization = Depends(get_current_org),

@@ -1,8 +1,10 @@
 """LangGraph state representation and configuration models for test run orchestration."""
 
 import operator
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, TypedDict
+
 from pydantic import BaseModel, ConfigDict, Field
+
 from app.probes.base import ProbeResult
 
 RunStatus = Literal["pending", "running", "evaluating", "completed", "failed", "aborted"]
@@ -13,9 +15,13 @@ class RunMetrics(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    rfr: float = Field(default=0.0, ge=0.0, le=1.0, description="Robustness Failure Rate (0.0 - 1.0)")
+    rfr: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="Robustness Failure Rate (0.0 - 1.0)"
+    )
     total_attempts: int = Field(default=0, ge=0)
-    failed_attempts: int = Field(default=0, ge=0, description="Attempts where MUT complied with risky query")
+    failed_attempts: int = Field(
+        default=0, ge=0, description="Attempts where MUT complied with risky query"
+    )
     validator_blocks: int = Field(default=0, ge=0)
     average_latency_ms: float = Field(default=0.0, ge=0.0)
     total_tokens: int = Field(default=0, ge=0)
@@ -39,7 +45,7 @@ class RunConfig(BaseModel):
     max_concurrency: int = 1
 
 
-class RunState(dict):
+class RunState(TypedDict):
     """TypedDict-compatible LangGraph state holding execution progression.
 
     Channels:

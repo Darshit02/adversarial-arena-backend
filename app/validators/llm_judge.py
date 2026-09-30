@@ -3,7 +3,9 @@
 import json
 import re
 from typing import Any, ClassVar
+
 import litellm
+
 from app.core.logging import get_logger
 from app.schemas.defense import LLMJudgeParams
 from app.validators.base import BaseValidator, ValidatorVerdict
@@ -17,7 +19,9 @@ class LLMJudgeValidator(BaseValidator):
     """Evaluates prompts using a judge model to determine policy adherence."""
 
     name: ClassVar[str] = "llm_judge"
-    description: ClassVar[str] = "Semantic intent and safety policy compliance evaluation using an LLM judge"
+    description: ClassVar[str] = (
+        "Semantic intent and safety policy compliance evaluation using an LLM judge"
+    )
     param_schema: ClassVar[type[LLMJudgeParams]] = LLMJudgeParams
 
     def __init__(self, params: LLMJudgeParams | dict[str, Any] | None = None) -> None:

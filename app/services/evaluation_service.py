@@ -2,16 +2,15 @@
 
 import uuid
 from typing import Any
-from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+
+from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError
 from app.db.models.attack_result import AttackResult
-from app.db.models.run import Run
 from app.engine.evaluator import (
     aggregate_by_category,
-    aggregate_by_model,
     compute_rfr,
     confidence_interval,
 )
@@ -97,7 +96,11 @@ class EvaluationService:
             v_dict = r.defense_verdict or {}
             if not v_dict.get("allowed", True):
                 total_blocks += 1
-                v_name = v_dict.get("validator_name") or v_dict.get("defense_name") or "unknown_validator"
+                v_name = (
+                    v_dict.get("validator_name")
+                    or v_dict.get("defense_name")
+                    or "unknown_validator"
+                )
                 validator_counts[v_name] = validator_counts.get(v_name, 0) + 1
 
         block_rate = round(total_blocks / total, 4)

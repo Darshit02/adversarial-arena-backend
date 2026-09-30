@@ -2,7 +2,9 @@
 
 import time
 from collections import defaultdict
+
 from redis.asyncio import Redis
+
 from app.core.errors import RateLimitError
 from app.core.logging import get_logger
 
@@ -64,7 +66,9 @@ class SlidingWindowRateLimiter:
                 remaining = limit - (current_count + cost)
                 return True, remaining, int(window_seconds)
             except Exception as e:
-                logger.warning("Redis rate limit error, falling back to in-memory limiter", error=str(e))
+                logger.warning(
+                    "Redis rate limit error, falling back to in-memory limiter", error=str(e)
+                )
 
         # In-memory sliding window fallback
         timestamps = self._in_memory_log[identifier]

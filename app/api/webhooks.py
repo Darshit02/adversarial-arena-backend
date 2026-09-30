@@ -1,12 +1,10 @@
 """Clerk Webhook receiver for automated User and Organization synchronization."""
 
-from typing import Any
 from fastapi import APIRouter, Depends, Header, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.core.errors import AuthenticationError
 from app.core.logging import get_logger
 from app.core.security import verify_clerk_webhook_signature
 from app.db.models.organization import Organization
@@ -43,6 +41,7 @@ async def clerk_webhook(
         )
     else:
         import json
+
         event = json.loads(body_bytes.decode() or "{}")
 
     event_type = event.get("type", "")
@@ -52,7 +51,11 @@ async def clerk_webhook(
     if event_type in ("user.created", "user.updated"):
         clerk_user_id = data.get("id")
         email_addresses = data.get("email_addresses", [])
-        primary_email = email_addresses[0].get("email_address") if email_addresses else f"{clerk_user_id}@clerk.user"
+        primary_email = (
+            email_addresses[0].get("email_address")
+            if email_addresses
+            else f"{clerk_user_id}@clerk.user"
+        )
         first_name = data.get("first_name")
         last_name = data.get("last_name")
 
@@ -101,8 +104,8 @@ async def clerk_webhook(
         name = data.get("name") or "Unnamed Organization"
         slug = data.get("slug") or f"org-{clerk_org_id[:8]}"
 
-        stmt = select(Organization).where(Organization.clerk_org_id == clerk_org_id)
-        org = (await session.execute(stmt)).scalar_one_or_none()
+        org_query = select(Organization).where(Organization.clerk_org_id == clerk_org_id)
+        org = (await session.execute(org_query)).scalar_one_or_none()
         if not org:
             org = Organization(clerk_org_id=clerk_org_id, name=name, slug=slug)
             session.add(org)

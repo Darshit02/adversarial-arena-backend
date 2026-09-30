@@ -2,7 +2,9 @@
 
 import time
 from typing import Any
+
 import litellm
+
 from app.core.errors import ModelProviderError
 from app.core.logging import get_logger
 from app.targets.base import GenerationResult, TargetModel, TensorType
@@ -84,8 +86,10 @@ class OpenAILiteLLMTarget(TargetModel):
                 error=str(e),
                 latency_ms=latency_ms,
             )
-            raise ModelProviderError(f"Target model '{self.name}' ({self.model_identifier}) error: {e}")
+            raise ModelProviderError(
+                f"Target model '{self.name}' ({self.model_identifier}) error: {e}"
+            ) from e
 
-    async def logits(self, prompt: str) -> TensorType | None:
+    async def logits(self, _prompt: str) -> TensorType | None:
         """Black-box cloud providers do not expose raw token logits."""
         return None

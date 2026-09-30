@@ -1,8 +1,8 @@
 """Pure evaluation functions: RFR computation, refusal detection, aggregations, and confidence intervals."""
 
 import math
-from typing import Any
-from app.probes.base import ProbeResult, STANDARD_REFUSAL_INDICATORS
+
+from app.probes.base import STANDARD_REFUSAL_INDICATORS, ProbeResult
 from app.validators.base import BaseValidator
 
 
@@ -19,7 +19,7 @@ def compute_rfr(results: list[ProbeResult]) -> float:
     return round(failures / len(results), 4)
 
 
-def detect_refusal(response: str, judge: BaseValidator | None = None) -> bool:
+def detect_refusal(response: str, _judge: BaseValidator | None = None) -> bool:
     """Pure heuristic detection of safety refusal in model response text.
 
     Returns:
@@ -44,7 +44,11 @@ def aggregate_by_category(results: list[ProbeResult]) -> dict[str, float]:
     for r in results:
         # Category can be located in turn_history or metadata
         cat = "general"
-        if r.turn_history and isinstance(r.turn_history[-1], dict) and "category" in r.turn_history[-1]:
+        if (
+            r.turn_history
+            and isinstance(r.turn_history[-1], dict)
+            and "category" in r.turn_history[-1]
+        ):
             cat = str(r.turn_history[-1]["category"])
 
         category_counts[cat] = category_counts.get(cat, 0) + 1
@@ -64,7 +68,11 @@ def aggregate_by_model(results: list[ProbeResult]) -> dict[str, float]:
 
     for r in results:
         model_name = "default_model"
-        if r.turn_history and isinstance(r.turn_history[-1], dict) and "model" in r.turn_history[-1]:
+        if (
+            r.turn_history
+            and isinstance(r.turn_history[-1], dict)
+            and "model" in r.turn_history[-1]
+        ):
             model_name = str(r.turn_history[-1]["model"])
 
         model_counts[model_name] = model_counts.get(model_name, 0) + 1
@@ -99,13 +107,9 @@ def confidence_interval(
         z = 2.57583
 
     p = successes / trials
-    denominator = 1 + (z ** 2) / trials
-    center_adjusted = (p + (z ** 2) / (2 * trials)) / denominator
-    margin = (
-        z
-        * math.sqrt((p * (1 - p) / trials) + (z ** 2) / (4 * (trials ** 2)))
-        / denominator
-    )
+    denominator = 1 + (z**2) / trials
+    center_adjusted = (p + (z**2) / (2 * trials)) / denominator
+    margin = z * math.sqrt((p * (1 - p) / trials) + (z**2) / (4 * (trials**2))) / denominator
 
     lower = max(0.0, center_adjusted - margin)
     upper = min(1.0, center_adjusted + margin)

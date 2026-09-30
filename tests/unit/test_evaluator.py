@@ -1,6 +1,5 @@
 """Unit tests for pure evaluation math, RFR calculation, refusal detection, and Wilson confidence intervals."""
 
-import pytest
 from app.engine.evaluator import (
     aggregate_by_category,
     aggregate_by_model,

@@ -4,11 +4,14 @@ import asyncio
 import json
 import uuid
 from typing import Any
+
 from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import StreamingResponse
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.organization import Organization
+from app.db.models.user import User
 from app.dependencies import (
     get_current_org,
     get_current_user,
@@ -16,8 +19,6 @@ from app.dependencies import (
     get_redis,
     rate_limit,
 )
-from app.db.models.organization import Organization
-from app.db.models.user import User
 from app.schemas.common import ResponseEnvelope
 from app.schemas.run import (
     AttackResultResponse,
@@ -70,7 +71,9 @@ async def list_runs(
 ) -> ResponseEnvelope[list[RunSummary]]:
     """List historical benchmark runs with filters and pagination."""
     filters = RunFilterParams(status=status, target_model_id=target_model_id)  # type: ignore
-    runs, total = await run_service.list_runs(session, org.id, filters=filters, page=page, per_page=per_page)
+    runs, total = await run_service.list_runs(
+        session, org.id, filters=filters, page=page, per_page=per_page
+    )
 
     data = [
         RunSummary(
@@ -110,7 +113,9 @@ async def get_run_results(
     session: AsyncSession = Depends(get_db),
 ) -> ResponseEnvelope[list[AttackResultResponse]]:
     """Retrieve paginated prompt-level attempts and evaluation results."""
-    results, total = await run_service.get_run_results(session, id, org.id, page=page, per_page=per_page)
+    results, total = await run_service.get_run_results(
+        session, id, org.id, page=page, per_page=per_page
+    )
     data = [AttackResultResponse.model_validate(r) for r in results]
     return ResponseEnvelope.paginated(data=data, page=page, per_page=per_page, total=total)
 
@@ -134,7 +139,7 @@ async def stream_run_progress(
         await pubsub.subscribe(channel_name)
         try:
             # Yield initial connect event
-            yield f"event: ping\ndata: {{\"status\": \"connected\", \"run_id\": \"{id}\"}}\n\n"
+            yield f'event: ping\ndata: {{"status": "connected", "run_id": "{id}"}}\n\n'
 
             while True:
                 if await request.is_disconnected():

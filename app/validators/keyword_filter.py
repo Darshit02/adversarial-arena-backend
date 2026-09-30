@@ -2,6 +2,7 @@
 
 import re
 from typing import Any, ClassVar
+
 from app.schemas.defense import KeywordFilterParams
 from app.validators.base import BaseValidator, ValidatorVerdict
 from app.validators.registry import register_validator
@@ -12,7 +13,9 @@ class KeywordFilterValidator(BaseValidator):
     """Inspects text against forbidden keywords and regular expression patterns."""
 
     name: ClassVar[str] = "keyword_filter"
-    description: ClassVar[str] = "Pattern-based filtering against specified keywords and regular expressions"
+    description: ClassVar[str] = (
+        "Pattern-based filtering against specified keywords and regular expressions"
+    )
     param_schema: ClassVar[type[KeywordFilterParams]] = KeywordFilterParams
 
     def __init__(self, params: KeywordFilterParams | dict[str, Any] | None = None) -> None:

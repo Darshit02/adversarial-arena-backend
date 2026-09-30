@@ -2,8 +2,9 @@
 
 from functools import lru_cache
 from typing import Literal
+
 from cryptography.fernet import Fernet
-from pydantic import Field, field_validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -96,7 +97,7 @@ class Settings(BaseSettings):
             Fernet(v.encode())
         except Exception as e:
             # Fallback for dev/testing if malformed
-            raise ValueError(f"ENCRYPTION_KEY must be a valid 32-byte url-safe base64 string: {e}")
+            raise ValueError(f"ENCRYPTION_KEY must be a valid 32-byte url-safe base64 string: {e}") from e
         return v
 
     @property

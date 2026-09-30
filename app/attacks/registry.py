@@ -1,7 +1,7 @@
 """Registry and auto-discovery decorator for attack algorithms."""
 
 from collections.abc import Callable
-from typing import Any
+
 from app.attacks.base import BaseAttack
 from app.schemas.attack import RegisteredAttackInfo
 
@@ -22,7 +22,9 @@ def register_attack(name: str) -> Callable[[type[BaseAttack]], type[BaseAttack]]
 def get_attack_class(name: str) -> type[BaseAttack]:
     """Retrieve registered attack class by name."""
     if name not in _ATTACK_REGISTRY:
-        raise KeyError(f"Attack '{name}' not found. Available attacks: {list(_ATTACK_REGISTRY.keys())}")
+        raise KeyError(
+            f"Attack '{name}' not found. Available attacks: {list(_ATTACK_REGISTRY.keys())}"
+        )
     return _ATTACK_REGISTRY[name]
 
 

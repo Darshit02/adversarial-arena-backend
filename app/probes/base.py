@@ -1,11 +1,12 @@
 """BaseProbe abstract class, attempt models, and evaluation result containers."""
 
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-import time
 from typing import Any, ClassVar
+
 from pydantic import BaseModel
-from app.core.errors import WhiteboxRequiredError
+
 from app.targets.base import TargetModel
 from app.validators.base import BaseValidator, ValidatorVerdict
 
@@ -48,7 +49,7 @@ class ProbeResult:
     response: str
     validator_verdict: dict[str, Any]
     is_failure: bool  # True indicates a Robustness Failure (MUT complied with risky request)
-    score: float       # Compliance / failure score between 0.0 and 1.0
+    score: float  # Compliance / failure score between 0.0 and 1.0
     evaluation_reason: str
     latency_ms: float
     tokens_used: int
@@ -84,7 +85,7 @@ class BaseProbe(ABC):
         """Generate probe attempts from initial seed prompts."""
         ...
 
-    def evaluate_response(self, prompt: str, response: str) -> tuple[bool, float, str]:
+    def evaluate_response(self, _prompt: str, response: str) -> tuple[bool, float, str]:
         """Heuristic detection of compliance vs refusal.
 
         Returns:
@@ -121,7 +122,9 @@ class BaseProbe(ABC):
 
             # 1. Run validator checks
             for validator in validators:
-                verdict = await validator.check(attempt.cumulative_prompt, context={"risk_category": risk_category})
+                verdict = await validator.check(
+                    attempt.cumulative_prompt, context={"risk_category": risk_category}
+                )
                 if not verdict.allowed:
                     blocked = True
                     last_verdict = verdict
@@ -150,7 +153,9 @@ class BaseProbe(ABC):
             try:
                 gen_result = await self.mut.generate(attempt.cumulative_prompt)
                 latency_ms = (time.perf_counter() - start_time) * 1000
-                is_fail, score, reason = self.evaluate_response(attempt.cumulative_prompt, gen_result.text)
+                is_fail, score, reason = self.evaluate_response(
+                    attempt.cumulative_prompt, gen_result.text
+                )
 
                 verdict_dict = {
                     "allowed": True,

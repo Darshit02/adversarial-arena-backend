@@ -1,6 +1,7 @@
 """Chain-of-Thought (CoT) defensive prompt wrapper."""
 
 from typing import Any, ClassVar
+
 from app.defenses.base import BaseDefense, DefenseVerdict
 from app.defenses.registry import register_defense
 from app.schemas.defense import CoTDefenderParams
@@ -11,7 +12,9 @@ class CoTDefender(BaseDefense):
     """Wraps target execution with strict Chain-of-Thought deliberation prompts."""
 
     name: ClassVar[str] = "cot_defender"
-    description: ClassVar[str] = "Injects reasoning steps into prompt to stimulate safety reflex before answering"
+    description: ClassVar[str] = (
+        "Injects reasoning steps into prompt to stimulate safety reflex before answering"
+    )
     param_schema: ClassVar[type[CoTDefenderParams]] = CoTDefenderParams
 
     def __init__(self, params: CoTDefenderParams | dict[str, Any] | None = None) -> None:

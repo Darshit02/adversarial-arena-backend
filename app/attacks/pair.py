@@ -4,10 +4,11 @@ Reference:
 Chao et al., 2023: 'Jailbreaking Black Box Large Language Models in Usable Time'.
 """
 
-import json
 import re
 from typing import Any, ClassVar
+
 import litellm
+
 from app.attacks.base import AttackPrompt, AttackResultItem, BaseAttack
 from app.attacks.registry import register_attack
 from app.core.logging import get_logger
@@ -22,7 +23,9 @@ class PAIRAttack(BaseAttack):
     """PAIR iterative adversarial refinement algorithm."""
 
     name: ClassVar[str] = "pair"
-    description: ClassVar[str] = "Automated iterative refinement algorithm using an attacker LLM feedback loop"
+    description: ClassVar[str] = (
+        "Automated iterative refinement algorithm using an attacker LLM feedback loop"
+    )
     requires_whitebox: ClassVar[bool] = False
     param_schema: ClassVar[type[PAIRParams]] = PAIRParams
 
@@ -121,7 +124,9 @@ class PAIRAttack(BaseAttack):
                     "defense_name": None,
                 }
                 for defense in defenses:
-                    v = await defense.check(current_prompt, context={"harm_category": harm_category})
+                    v = await defense.check(
+                        current_prompt, context={"harm_category": harm_category}
+                    )
                     if not v.allowed:
                         blocked = True
                         defense_verdict = v.to_dict()
@@ -154,7 +159,7 @@ class PAIRAttack(BaseAttack):
                     defense_verdict=defense_verdict,
                     is_jailbroken=is_jb,
                     jailbreak_score=score,
-                    evaluation_reason=reason,
+                    evaluation_reason=str(reason),
                     latency_ms=latency,
                     tokens_used=tokens,
                 )

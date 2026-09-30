@@ -29,7 +29,7 @@ async def readiness_check(response: Response) -> dict[str, str]:
         redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
         ping_res = await redis.ping()
         redis_ok = bool(ping_res)
-        await redis.aclose()
+        await redis.close()
     except Exception:
         redis_ok = False
 

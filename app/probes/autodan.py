@@ -3,8 +3,10 @@
 import random
 import re
 from typing import Any, ClassVar
+
 import litellm
 from pydantic import BaseModel, ConfigDict, Field
+
 from app.core.logging import get_logger
 from app.probes.base import BaseProbe, ProbeAttempt, ProbeResult
 from app.probes.registry import register_probe
@@ -19,12 +21,22 @@ class AutoDANParams(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    population_size: int = Field(default=32, ge=4, le=100, description="Candidate population size per generation")
+    population_size: int = Field(
+        default=32, ge=4, le=100, description="Candidate population size per generation"
+    )
     generations: int = Field(default=10, ge=1, le=50, description="Maximum genetic generations")
-    mutation_rate: float = Field(default=0.4, ge=0.0, le=1.0, description="Probability of sentence mutation")
-    crossover_rate: float = Field(default=0.6, ge=0.0, le=1.0, description="Probability of sentence crossover")
-    mutation_model: str = Field(default="gpt-4o-mini", description="LLM used for semantic paraphrase mutations")
-    early_stop_fitness: float = Field(default=0.9, ge=0.5, le=1.0, description="Fitness threshold for early termination")
+    mutation_rate: float = Field(
+        default=0.4, ge=0.0, le=1.0, description="Probability of sentence mutation"
+    )
+    crossover_rate: float = Field(
+        default=0.6, ge=0.0, le=1.0, description="Probability of sentence crossover"
+    )
+    mutation_model: str = Field(
+        default="gpt-4o-mini", description="LLM used for semantic paraphrase mutations"
+    )
+    early_stop_fitness: float = Field(
+        default=0.9, ge=0.5, le=1.0, description="Fitness threshold for early termination"
+    )
 
 
 @register_probe("autodan")
@@ -32,7 +44,9 @@ class AutoDANProbe(BaseProbe):
     """AutoDAN evolutionary search probe with crossover, mutation, and fitness evaluation."""
 
     name: ClassVar[str] = "autodan"
-    description: ClassVar[str] = "Genetic algorithm optimizing candidate prompts via sentence crossover and mutation"
+    description: ClassVar[str] = (
+        "Genetic algorithm optimizing candidate prompts via sentence crossover and mutation"
+    )
     requires_whitebox: ClassVar[bool] = False
     param_schema: ClassVar[type[AutoDANParams]] = AutoDANParams
 
@@ -140,7 +154,9 @@ class AutoDANProbe(BaseProbe):
                 # Score fitness for sample of population
                 fitness_scores: list[tuple[float, str, str]] = []  # (fitness, prompt, response)
 
-                for candidate in population[:8]:  # evaluate tournament subset per gen for efficiency
+                for candidate in population[
+                    :8
+                ]:  # evaluate tournament subset per gen for efficiency
                     # Check validators
                     blocked = False
                     for val in validators:
@@ -172,12 +188,16 @@ class AutoDANProbe(BaseProbe):
 
                 # Early stopping if fitness threshold reached
                 if best_fitness >= self.ad_config.early_stop_fitness:
-                    logger.info("AutoDAN reached early stopping fitness", gen=gen_idx, fitness=best_fitness)
+                    logger.info(
+                        "AutoDAN reached early stopping fitness", gen=gen_idx, fitness=best_fitness
+                    )
                     break
 
                 # Selection: sort candidates by fitness
                 fitness_scores.sort(key=lambda x: x[0], reverse=True)
-                survivors = [cand for _, cand, _ in fitness_scores[: max(2, len(fitness_scores) // 2)]]
+                survivors = [
+                    cand for _, cand, _ in fitness_scores[: max(2, len(fitness_scores) // 2)]
+                ]
 
                 # Crossover & Mutation for next generation
                 new_pop: list[str] = list(survivors)
@@ -198,7 +218,10 @@ class AutoDANProbe(BaseProbe):
                     seed_prompt=seed,
                     prompt=best_candidate,
                     response=best_response,
-                    validator_verdict={"allowed": True, "reason": "Evaluated during genetic iterations"},
+                    validator_verdict={
+                        "allowed": True,
+                        "reason": "Evaluated during genetic iterations",
+                    },
                     is_failure=is_fail,
                     score=best_fitness,
                     evaluation_reason=f"AutoDAN genetic search fitness: {best_fitness:.2f}",

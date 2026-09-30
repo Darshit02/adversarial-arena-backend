@@ -2,6 +2,7 @@
 
 import time
 from typing import Any
+
 from app.targets.base import GenerationResult, TargetModel, TensorType
 
 
@@ -49,5 +50,5 @@ class MockTargetModel(TargetModel):
             raw_response={"mock": True},
         )
 
-    async def logits(self, prompt: str) -> TensorType | None:
+    async def logits(self, _prompt: str) -> TensorType | None:
         return None

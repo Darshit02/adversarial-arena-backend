@@ -2,7 +2,9 @@
 
 import time
 from typing import Any
+
 import httpx
+
 from app.config import get_settings
 from app.core.errors import ModelProviderError
 from app.core.logging import get_logger
@@ -56,8 +58,10 @@ class OllamaTarget(TargetModel):
                 data = response.json()
             except httpx.HTTPError as e:
                 latency_ms = (time.perf_counter() - start_time) * 1000
-                logger.error("Ollama connection failed", url=url, error=str(e), latency_ms=latency_ms)
-                raise ModelProviderError(f"Ollama server error at '{self.endpoint_url}': {e}")
+                logger.error(
+                    "Ollama connection failed", url=url, error=str(e), latency_ms=latency_ms
+                )
+                raise ModelProviderError(f"Ollama server error at '{self.endpoint_url}': {e}") from e
 
         latency_ms = (time.perf_counter() - start_time) * 1000
         message = data.get("message", {})
@@ -77,6 +81,6 @@ class OllamaTarget(TargetModel):
             raw_response=data,
         )
 
-    async def logits(self, prompt: str) -> TensorType | None:
+    async def logits(self, _prompt: str) -> TensorType | None:
         """Local Ollama does not expose raw output logits unless compiled with custom extensions."""
         return None

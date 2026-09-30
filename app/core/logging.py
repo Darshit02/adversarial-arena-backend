@@ -3,8 +3,10 @@
 import logging
 import sys
 from typing import Any
+
 import structlog
 from structlog.types import EventDict, WrappedLogger
+
 from app.config import get_settings
 
 # Sensitive keys that must always be masked in logs
@@ -31,7 +33,7 @@ PROMPT_KEYS = {
 
 def redact_sensitive_data(
     logger: WrappedLogger,  # noqa: ARG001
-    method_name: str,       # noqa: ARG001
+    method_name: str,  # noqa: ARG001
     event_dict: EventDict,
 ) -> EventDict:
     """Processor that redacts passwords, tokens, API keys, and sensitive payload prompts."""
@@ -69,13 +71,15 @@ def setup_logging() -> None:
         redact_sensitive_data,
     ]
 
+    renderer: Any
     if settings.LOG_JSON:
         renderer = structlog.processors.JSONRenderer()
     else:
         renderer = structlog.dev.ConsoleRenderer(colors=True)
 
     structlog.configure(
-        processors=shared_processors + [
+        processors=shared_processors
+        + [
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
         logger_factory=structlog.stdlib.LoggerFactory(),

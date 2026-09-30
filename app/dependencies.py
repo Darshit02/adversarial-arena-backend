@@ -1,7 +1,7 @@
 """FastAPI dependency injection: database session, Clerk JWT authentication, and rate limiting."""
 
 from collections.abc import AsyncGenerator, Callable
-import uuid
+
 from fastapi import Depends, Header, Request
 from redis.asyncio import Redis
 from sqlalchemy import select
@@ -38,7 +38,7 @@ async def get_redis() -> AsyncGenerator[Redis, None]:
     try:
         yield client
     finally:
-        await client.aclose()
+        await client.close()
 
 
 async def get_current_user(
@@ -116,7 +116,7 @@ def rate_limit(scope: str = "default", limit: int = 60, window: int = 60) -> Cal
     """Dependency factory enforcing rate limits on endpoints."""
 
     async def _rate_limit_dependency(
-        request: Request,
+        _request: Request,
         current_user: User = Depends(get_current_user),
         redis: Redis = Depends(get_redis),
     ) -> None:

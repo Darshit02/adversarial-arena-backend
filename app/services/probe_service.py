@@ -1,7 +1,8 @@
 """Probe service handling template CRUD, parameter validation, and algorithm discovery."""
 
-from typing import Any
 import uuid
+from typing import Any
+
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,7 +12,6 @@ from app.probes.registry import get_probe_class, list_registered_probes
 from app.schemas.attack import (
     AttackTemplateCreate,
     AttackTemplateUpdate,
-    RegisteredAttackInfo,
 )
 
 
@@ -27,13 +27,13 @@ class ProbeService:
         try:
             probe_cls = get_probe_class(probe_type)
         except KeyError:
-            raise ValidationError(f"Unknown probe type '{probe_type}'.")
+            raise ValidationError(f"Unknown probe type '{probe_type}'.") from None
 
         if hasattr(probe_cls, "param_schema") and probe_cls.param_schema:
             try:
                 probe_cls.param_schema(**params)
             except Exception as e:
-                raise ValidationError(f"Invalid parameters for probe '{probe_type}': {e}")
+                raise ValidationError(f"Invalid parameters for probe '{probe_type}': {e}") from e
 
     async def list_templates(
         self,
