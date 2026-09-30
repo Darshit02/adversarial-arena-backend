@@ -54,3 +54,8 @@ async def check_db_health() -> bool:
     except Exception as e:
         logger.error("Database health check failed", error=str(e))
         return False
+
+
+async def close_db_engine() -> None:
+    """Dispose of the global database engine connection pool."""
+    await engine.dispose()

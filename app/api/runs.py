@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import time
 import uuid
 from typing import Any
 
@@ -124,13 +125,36 @@ async def get_run_results(
 async def stream_run_progress(
     id: uuid.UUID,
     request: Request,
+    _current_user: Any = Depends(get_current_user),
     org: Organization = Depends(get_current_org),
     session: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
 ) -> StreamingResponse:
     """Server-Sent Events (SSE) streaming live benchmark execution progress from Redis pub/sub."""
     # Verify run exists and belongs to org
-    await run_service.get_run(session, id, org.id)
+    run = await run_service.get_run(session, id, org.id)
+
+    # If run already completed when SSE opens: replay final state then close immediately.
+    run_status = getattr(run, "status", "pending")
+    if run_status in ("completed", "failed", "aborted"):
+
+        async def replay_generator():
+            event_payload = {
+                "run_id": str(run.id),
+                "status": run_status,
+                "metrics": getattr(run, "metrics", {}) or {},
+            }
+            yield f"event: {run_status}\ndata: {json.dumps(event_payload)}\n\n"
+
+        return StreamingResponse(
+            replay_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )
 
     channel_name = f"run:{id}"
 
@@ -141,36 +165,77 @@ async def stream_run_progress(
             # Yield initial connect event
             yield f'event: ping\ndata: {{"status": "connected", "run_id": "{id}"}}\n\n'
 
+            timeout_seconds = 1800.0  # 30 minutes
+            last_event_time = time.time()
+
             while True:
                 if await request.is_disconnected():
                     break
 
-                message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
-                if message and message.get("type") == "message":
-                    raw_data = message.get("data", "")
-                    yield f"event: progress\ndata: {raw_data}\n\n"
+                if time.time() - last_event_time > timeout_seconds:
+                    yield f"event: timeout\ndata: {json.dumps({'message': 'Stream timed out after 30 minutes of inactivity'})}\n\n"
+                    break
+
+                message = None
+                if hasattr(pubsub, "get_message"):
+                    message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+
+                if message and isinstance(message, dict) and message.get("type") == "message":
+                    raw_data = message.get("data")
+                    if isinstance(raw_data, bytes):
+                        raw_data = raw_data.decode("utf-8")
 
                     try:
-                        parsed = json.loads(raw_data)
-                        if parsed.get("event") in ("run.completed", "run.failed"):
-                            break
+                        parsed = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
                     except Exception:
-                        pass
+                        parsed = {"type": "progress", "data": raw_data}
+
+                    last_event_time = time.time()
+
+                    ev_type = parsed.get("type")
+                    if not ev_type and "event" in parsed:
+                        ev_type = parsed["event"]
+                    if not ev_type:
+                        ev_type = "progress"
+
+                    clean_type = ev_type.split(".", 1)[1] if ev_type.startswith("run.") else ev_type
+                    ev_data = parsed.get("data", parsed)
+                    if isinstance(ev_data, dict) and "event" in parsed and "event" not in ev_data:
+                        ev_data["event"] = parsed["event"]
+
+                    yield f"event: {clean_type}\ndata: {json.dumps(ev_data)}\n\n"
+
+                    if clean_type in ("completed", "failed", "aborted") or parsed.get("event") in (
+                        "run.completed",
+                        "run.failed",
+                        "run.aborted",
+                    ):
+                        break
                 else:
-                    # SSE keep-alive ping
                     yield ": keep-alive\n\n"
                     await asyncio.sleep(0.5)
         finally:
-            await pubsub.unsubscribe(channel_name)
-            await pubsub.aclose()
+            try:
+                await pubsub.unsubscribe(channel_name)
+            except Exception:
+                pass
+            try:
+                if hasattr(pubsub, "aclose"):
+                    await pubsub.aclose()
+                elif hasattr(pubsub, "close"):
+                    res = pubsub.close()
+                    if asyncio.iscoroutine(res):
+                        await res
+            except Exception:
+                pass
 
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
+            "Cache-Control": "no-cache, no-transform",
             "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
         },
     )
 

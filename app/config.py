@@ -1,10 +1,10 @@
 """Application settings using Pydantic Settings v2."""
 
 from functools import lru_cache
-from typing import Literal
+from typing import Any, Literal
 
 from cryptography.fernet import Fernet
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,31 +14,32 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
+        case_sensitive=True,
         extra="ignore",
-        case_sensitive=False,
     )
 
     # Application
     APP_ENV: Literal["development", "production", "test"] = "development"
+    ENVIRONMENT: Literal["dev", "staging", "prod"] = "dev"
     APP_NAME: str = "Adversarial Arena Backend"
     APP_DEBUG: bool = True
     PORT: int = 8000
     HOST: str = "0.0.0.0"
+    API_BASE_PATH: str = "/api/v1"
     API_V1_PREFIX: str = "/api/v1"
 
     # Security & Encryption
     # 32-byte url-safe base64 key
     ENCRYPTION_KEY: str = "2j8S9k_wwrYCfONyKkMNUmsik6l3Xm-uIWEkS6ENLjY="
-    CORS_ORIGINS: list[str] = [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ]
+    FERNET_KEY: str | None = None
+    CORS_ORIGINS: list[str] = ["http://localhost:3000"]
     RATE_LIMIT_DEFAULT_PER_MINUTE: int = 60
     RATE_LIMIT_RUNS_PER_MINUTE: int = 10
 
     # Clerk Authentication
-    CLERK_JWKS_URL: str = "https://api.clerk.dev/v1/jwks"
-    CLERK_ISSUER: str = "https://clerk.your-domain.com"
+    CLERK_SECRET_KEY: str = "sk_test_xxx"
+    CLERK_JWKS_URL: str = "https://your-app.clerk.accounts.dev/.well-known/jwks.json"
+    CLERK_ISSUER: str = "https://your-app.clerk.accounts.dev"
     CLERK_AUDIENCE: str | None = None
     CLERK_WEBHOOK_SECRET: str = "whsec_test_secret"
     JWKS_CACHE_TTL_SECONDS: int = 3600  # 1 hour cache in Redis
@@ -80,6 +81,8 @@ class Settings(BaseSettings):
     REDACT_PROMPTS_IN_LOGS: bool = True
     OTEL_EXPORTER_OTLP_ENDPOINT: str | None = None
     SENTRY_DSN: str | None = None
+    METRICS_USER: str = ""
+    METRICS_PASSWORD: str = ""
 
     # Report Artifact Storage
     STORAGE_BACKEND: Literal["local", "s3"] = "local"
@@ -89,6 +92,26 @@ class Settings(BaseSettings):
     S3_ACCESS_KEY: str | None = None
     S3_SECRET_KEY: str | None = None
 
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def split_origins(cls, v: Any) -> list[str]:
+        if isinstance(v, str):
+            return [o.strip() for o in v.split(",") if o.strip()]
+        return v
+
+    @model_validator(mode="before")
+    @classmethod
+    def sync_keys(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if data.get("FERNET_KEY"):
+                data["ENCRYPTION_KEY"] = data["FERNET_KEY"]
+            if "API_BASE_PATH" in data and "API_V1_PREFIX" not in data:
+                data["API_V1_PREFIX"] = data["API_BASE_PATH"]
+            if "ENVIRONMENT" in data and "APP_ENV" not in data:
+                env_map = {"dev": "development", "staging": "development", "prod": "production"}
+                data["APP_ENV"] = env_map.get(data["ENVIRONMENT"], "development")
+        return data
+
     @field_validator("ENCRYPTION_KEY")
     @classmethod
     def validate_fernet_key(cls, v: str) -> str:
@@ -96,13 +119,14 @@ class Settings(BaseSettings):
         try:
             Fernet(v.encode())
         except Exception as e:
-            # Fallback for dev/testing if malformed
-            raise ValueError(f"ENCRYPTION_KEY must be a valid 32-byte url-safe base64 string: {e}") from e
+            raise ValueError(
+                f"ENCRYPTION_KEY must be a valid 32-byte url-safe base64 string: {e}"
+            ) from e
         return v
 
     @property
     def is_production(self) -> bool:
-        return self.APP_ENV == "production"
+        return self.ENVIRONMENT == "prod" or self.APP_ENV == "production"
 
     @property
     def is_test(self) -> bool:
@@ -113,3 +137,7 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Cached singleton accessor for application settings."""
     return Settings()
+
+
+# Module-level singleton instance
+settings = get_settings()

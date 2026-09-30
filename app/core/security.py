@@ -1,4 +1,4 @@
-"""Security utilities: Fernet encryption, Clerk JWKS verification, and Svix webhook validation."""
+"""Security utilities: Fernet encryption, Clerk JWKS verification, and authentication dependencies."""
 
 import json
 import time
@@ -6,6 +6,7 @@ from typing import Any
 
 import httpx
 from cryptography.fernet import Fernet
+from fastapi import Depends, Header, HTTPException, Query, status
 from jose import jwt
 from jose.exceptions import JWTError
 from redis.asyncio import Redis
@@ -14,8 +15,33 @@ from svix.webhooks import Webhook, WebhookVerificationError
 from app.config import get_settings
 from app.core.errors import AuthenticationError
 from app.core.logging import get_logger
+from app.core.redis import get_redis
 
 logger = get_logger(__name__)
+
+
+class AuthUser(dict):
+    """Authenticated user info dictionary with attribute access."""
+
+    @property
+    def id(self) -> str:
+        return self.get("user_id") or ""
+
+    @property
+    def user_id(self) -> str:
+        return self.get("user_id") or ""
+
+    @property
+    def org_id(self) -> str:
+        return self.get("org_id") or ""
+
+    @property
+    def email(self) -> str | None:
+        return self.get("email")
+
+    @property
+    def session_id(self) -> str | None:
+        return self.get("session_id")
 
 
 class FernetManager:
@@ -39,9 +65,9 @@ class FernetManager:
 
 
 class JWKSManager:
-    """Clerk JWKS fetching, Redis caching (1h TTL), and JWT verification."""
+    """Clerk JWKS fetching, Redis caching (1h TTL, key "clerk:jwks"), and JWT verification."""
 
-    REDIS_JWKS_KEY = "clerk:jwks:cache"
+    REDIS_JWKS_KEY = "clerk:jwks"
 
     def __init__(self) -> None:
         self.settings = get_settings()
@@ -51,22 +77,23 @@ class JWKSManager:
     async def get_jwks(
         self, redis: Redis | None = None, force_refresh: bool = False
     ) -> dict[str, Any]:
-        """Fetch JWKS keys, attempting Redis cache first, then falling back to HTTP request."""
+        """Fetch JWKS keys from Redis cache or Clerk endpoint with 1h TTL."""
         now = time.time()
 
         if not force_refresh:
-            # Try Redis cache if available
             if redis is not None:
                 try:
                     cached_jwks = await redis.get(self.REDIS_JWKS_KEY)
                     if cached_jwks:
+                        if isinstance(cached_jwks, bytes):
+                            cached_jwks = cached_jwks.decode("utf-8")
                         return json.loads(cached_jwks)
                 except Exception as e:
                     logger.warning(
-                        "Redis error reading JWKS cache, falling back to in-memory", error=str(e)
+                        "Redis error reading JWKS cache, falling back to in-memory",
+                        error=str(e),
                     )
 
-            # Try in-memory cache
             if self._in_memory_jwks and now < self._in_memory_jwks_expiry:
                 return self._in_memory_jwks
 
@@ -79,18 +106,18 @@ class JWKSManager:
                 jwks = response.json()
             except Exception as e:
                 logger.error("Failed to fetch Clerk JWKS", error=str(e))
-                # If we have an existing stale JWKS in memory, use it as fallback
                 if self._in_memory_jwks:
                     return self._in_memory_jwks
-                raise AuthenticationError(
-                    f"Unable to retrieve public JWKS for token verification: {e}"
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Unable to retrieve public JWKS for token verification",
                 ) from e
 
         # Update in-memory cache
         self._in_memory_jwks = jwks
         self._in_memory_jwks_expiry = now + self.settings.JWKS_CACHE_TTL_SECONDS
 
-        # Update Redis cache with 1 hour TTL
+        # Update Redis cache with 1-hour TTL
         if redis is not None:
             try:
                 await redis.setex(
@@ -104,27 +131,32 @@ class JWKSManager:
         return jwks
 
     async def verify_token(self, token: str, redis: Redis | None = None) -> dict[str, Any]:
-        """Verify Clerk JWT against public JWKS with kid lookup and key rotation handling."""
+        """Verify Clerk JWT against public JWKS with RS256 and issuer validation."""
         try:
             unverified_header = jwt.get_unverified_header(token)
         except JWTError as e:
-            raise AuthenticationError(f"Invalid JWT header format: {e}") from e
+            raise AuthenticationError(
+                detail=f"Invalid JWT header format: {e}",
+            ) from e
 
         kid = unverified_header.get("kid")
         if not kid:
-            raise AuthenticationError("JWT header missing 'kid' claim")
+            raise AuthenticationError(
+                detail="JWT header missing 'kid' claim",
+            )
 
         jwks = await self.get_jwks(redis=redis, force_refresh=False)
         key = next((k for k in jwks.get("keys", []) if k.get("kid") == kid), None)
 
-        # If key not found, refresh JWKS once to accommodate recently rotated keys
         if key is None:
-            logger.info("Token 'kid' not in cached JWKS, forcing fresh JWKS fetch", kid=kid)
+            logger.info("Token 'kid' not in cached JWKS, forcing refresh", kid=kid)
             jwks = await self.get_jwks(redis=redis, force_refresh=True)
             key = next((k for k in jwks.get("keys", []) if k.get("kid") == kid), None)
 
         if key is None:
-            raise AuthenticationError(f"Signing key with kid '{kid}' not found in public JWKS")
+            raise AuthenticationError(
+                detail=f"Signing key with kid '{kid}' not found in public JWKS",
+            )
 
         try:
             options = {
@@ -145,7 +177,9 @@ class JWKSManager:
             )
             return payload
         except JWTError as e:
-            raise AuthenticationError(f"JWT signature verification failed: {e}") from e
+            raise AuthenticationError(
+                detail=f"Token signature verification failed: {e}",
+            ) from e
 
 
 def verify_clerk_webhook_signature(
@@ -156,16 +190,93 @@ def verify_clerk_webhook_signature(
     """Verify Svix webhook signature for Clerk sync events."""
     try:
         wh = Webhook(webhook_secret)
-        # svix requires svix-id, svix-timestamp, svix-signature in headers
-        verified: Any = wh.verify(payload_body, headers)  # type: ignore[func-returns-value]
+        verified: Any = wh.verify(payload_body, headers)
         if isinstance(verified, dict):
             return verified
         return json.loads(payload_body.decode("utf-8"))
     except WebhookVerificationError as e:
         logger.warning("Clerk webhook signature verification failed", error=str(e))
-        raise AuthenticationError("Invalid Clerk webhook signature") from e
+        raise AuthenticationError(
+            detail="Invalid Clerk webhook signature",
+        ) from e
 
 
 # Global instances
 fernet_manager = FernetManager()
 jwks_manager = JWKSManager()
+
+
+def _extract_token(authorization: str | None = None, token: str | None = None) -> str | None:
+    """Extract raw bearer token from Authorization header or ?token= query parameter."""
+    if authorization:
+        parts = authorization.strip().split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            return parts[1]
+        elif len(parts) == 1 and not token:
+            # Fallback if bare token was sent in authorization header
+            return parts[0]
+    if token:
+        return token.strip()
+    return None
+
+
+async def get_current_user(
+    authorization: str | None = Header(default=None),
+    token: str | None = Query(default=None),
+    redis: Redis = Depends(get_redis),
+) -> AuthUser:
+    """FastAPI dependency for verifying Clerk JWT and returning authenticated user dict.
+
+    - Reads bearer token from Authorization header
+    - Falls back to ?token= query param (for SSE)
+    - Verifies signature against JWKS (RS256)
+    - Verifies issuer === settings.CLERK_ISSUER
+    - Returns dict: { user_id, org_id, email, session_id }
+    - Raises HTTPException(401) with RFC 7807 body on failure
+    """
+    raw_token = _extract_token(authorization=authorization, token=token)
+    if not raw_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or malformed Authorization header with Bearer token.",
+        )
+
+    payload = await jwks_manager.verify_token(raw_token, redis=redis)
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token payload missing subject ('sub') claim.",
+        )
+
+    return AuthUser(
+        user_id=user_id,
+        org_id=payload.get("org_id"),
+        email=payload.get("email"),
+        session_id=payload.get("sid"),
+    )
+
+
+async def get_current_user_optional(
+    authorization: str | None = Header(default=None),
+    token: str | None = Query(default=None),
+    redis: Redis = Depends(get_redis),
+) -> AuthUser | None:
+    """Optional authentication dependency; returns AuthUser if valid, otherwise None."""
+    raw_token = _extract_token(authorization=authorization, token=token)
+    if not raw_token:
+        return None
+
+    try:
+        payload = await jwks_manager.verify_token(raw_token, redis=redis)
+        user_id = payload.get("sub")
+        if not user_id:
+            return None
+        return AuthUser(
+            user_id=user_id,
+            org_id=payload.get("org_id"),
+            email=payload.get("email"),
+            session_id=payload.get("sid"),
+        )
+    except Exception:
+        return None

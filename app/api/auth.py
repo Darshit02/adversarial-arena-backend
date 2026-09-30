@@ -1,37 +1,54 @@
-"""Authentication and current user endpoints."""
+"""Authentication and current user profile endpoints."""
 
 from typing import Any
 
 from fastapi import APIRouter, Depends
 
-from app.db.models.organization import Organization
-from app.db.models.user import User
-from app.dependencies import get_current_org, get_current_user
-from app.schemas.common import ResponseEnvelope
+from app.core.security import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-@router.get("/me", response_model=ResponseEnvelope[dict[str, Any]])
+@router.get("/me")
 async def get_me(
-    current_user: User = Depends(get_current_user),
-    org: Organization = Depends(get_current_org),
-) -> ResponseEnvelope[dict[str, Any]]:
+    current_user: Any = Depends(get_current_user),
+) -> dict[str, Any]:
     """Return currently authenticated user and organization profile."""
-    data = {
+    user_id = getattr(current_user, "id", None) or (
+        current_user.get("user_id") if isinstance(current_user, dict) else str(current_user)
+    )
+    clerk_user_id = getattr(current_user, "clerk_user_id", None) or (
+        current_user.get("user_id") if isinstance(current_user, dict) else str(current_user)
+    )
+    email = getattr(current_user, "email", None) or (
+        current_user.get("email") if isinstance(current_user, dict) else None
+    )
+    first_name = getattr(current_user, "first_name", None) or (
+        current_user.get("first_name") if isinstance(current_user, dict) else None
+    )
+    last_name = getattr(current_user, "last_name", None) or (
+        current_user.get("last_name") if isinstance(current_user, dict) else None
+    )
+    role = getattr(current_user, "role", None) or (
+        current_user.get("role") if isinstance(current_user, dict) else "member"
+    )
+    session_id = current_user.get("session_id") if isinstance(current_user, dict) else None
+
+    org_id = getattr(current_user, "organization_id", None) or (
+        current_user.get("org_id") if isinstance(current_user, dict) else None
+    )
+
+    return {
         "user": {
-            "id": str(current_user.id),
-            "clerk_user_id": current_user.clerk_user_id,
-            "email": current_user.email,
-            "first_name": current_user.first_name,
-            "last_name": current_user.last_name,
-            "role": current_user.role,
+            "id": str(user_id) if user_id else None,
+            "clerk_user_id": str(clerk_user_id) if clerk_user_id else None,
+            "email": email,
+            "first_name": first_name,
+            "last_name": last_name,
+            "role": role,
+            "session_id": session_id,
         },
-        "organization": {
-            "id": str(org.id),
-            "clerk_org_id": org.clerk_org_id,
-            "name": org.name,
-            "slug": org.slug,
+        "org": {
+            "id": str(org_id) if org_id else None,
         },
     }
-    return ResponseEnvelope.success(data)

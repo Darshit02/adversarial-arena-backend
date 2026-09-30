@@ -97,7 +97,7 @@ plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-ra -q --asyncio-mode=auto"
+addopts = "-ra --asyncio-mode=auto"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 pythonpath = ["."]

@@ -142,6 +142,14 @@ class MockPubSub:
     async def aclose(self) -> None:
         pass
 
+    async def close(self) -> None:
+        pass
+
+    async def listen(self):
+        while self.redis.published_messages:
+            ch, msg = self.redis.published_messages.pop(0)
+            yield {"type": "message", "channel": ch, "data": msg}
+
 
 @pytest.fixture(scope="session")
 def rsa_keypair():

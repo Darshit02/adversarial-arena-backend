@@ -1,8 +1,10 @@
 """RFC 7807 Problem Details and custom domain exceptions."""
 
+import http
 from typing import Any
 
-from fastapi import FastAPI, Request, status
+import structlog
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -23,14 +25,15 @@ class ProblemDetail(BaseModel):
     invalid_params: list[dict[str, Any]] | None = Field(
         default=None, description="Detailed validation error list if applicable"
     )
+    request_id: str | None = Field(default=None, description="Unique correlation ID for tracing")
 
 
-class AppException(Exception):
-    """Base application exception with RFC 7807 attributes."""
+class AppException(HTTPException):
+    """Base application exception with RFC 7807 attributes and HTTPException compatibility."""
 
     status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR
     title: str = "Internal Server Error"
-    problem_type: str = "https://arena.security/errors/internal-server-error"
+    problem_type: str = "https://adversarial-arena.com/errors/internal-server-error"
 
     def __init__(
         self,
@@ -39,70 +42,95 @@ class AppException(Exception):
         status_code: int | None = None,
         problem_type: str | None = None,
         invalid_params: list[dict[str, Any]] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> None:
-        super().__init__(detail)
+        sc = status_code if status_code is not None else self.status_code
+        super().__init__(status_code=sc, detail=detail, headers=headers)
         self.detail = detail
         if title:
             self.title = title
-        if status_code:
+        if status_code is not None:
             self.status_code = status_code
         if problem_type:
             self.problem_type = problem_type
         self.invalid_params = invalid_params
 
 
-class AuthenticationError(AppException):
+class BadRequest(AppException):
+    status_code = status.HTTP_400_BAD_REQUEST
+    title = "Bad Request"
+    problem_type = "https://adversarial-arena.com/errors/bad-request"
+
+
+class Unauthorized(AppException):
     status_code = status.HTTP_401_UNAUTHORIZED
-    title = "Authentication Failed"
-    problem_type = "https://arena.security/errors/authentication-failed"
+    title = "Unauthorized"
+    problem_type = "https://adversarial-arena.com/errors/unauthorized"
 
 
-class AuthorizationError(AppException):
+class Forbidden(AppException):
     status_code = status.HTTP_403_FORBIDDEN
-    title = "Permission Denied"
-    problem_type = "https://arena.security/errors/permission-denied"
+    title = "Forbidden"
+    problem_type = "https://adversarial-arena.com/errors/forbidden"
 
 
-class NotFoundError(AppException):
+class NotFound(AppException):
     status_code = status.HTTP_404_NOT_FOUND
-    title = "Resource Not Found"
-    problem_type = "https://arena.security/errors/resource-not-found"
+    title = "Not Found"
+    problem_type = "https://adversarial-arena.com/errors/not-found"
 
 
-class ConflictError(AppException):
+class Conflict(AppException):
     status_code = status.HTTP_409_CONFLICT
-    title = "Resource Conflict"
-    problem_type = "https://arena.security/errors/resource-conflict"
+    title = "Conflict"
+    problem_type = "https://adversarial-arena.com/errors/conflict"
 
 
-class ValidationError(AppException):
-    status_code = getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", 422)
-    title = "Validation Error"
-    problem_type = "https://arena.security/errors/validation-error"
-
-
-class RateLimitError(AppException):
+class RateLimited(AppException):
     status_code = status.HTTP_429_TOO_MANY_REQUESTS
     title = "Rate Limit Exceeded"
-    problem_type = "https://arena.security/errors/rate-limit-exceeded"
+    problem_type = "https://adversarial-arena.com/errors/rate-limited"
+
+
+# Aliases for backward compatibility
+AuthenticationError = Unauthorized
+AuthorizationError = Forbidden
+NotFoundError = NotFound
+ConflictError = Conflict
+RateLimitError = RateLimited
+ValidationError = BadRequest
 
 
 class ModelProviderError(AppException):
     status_code = status.HTTP_502_BAD_GATEWAY
     title = "LLM Provider Error"
-    problem_type = "https://arena.security/errors/model-provider-error"
+    problem_type = "https://adversarial-arena.com/errors/model-provider-error"
 
 
 class OrchestrationError(AppException):
     status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
     title = "Orchestration Error"
-    problem_type = "https://arena.security/errors/orchestration-error"
+    problem_type = "https://adversarial-arena.com/errors/orchestration-error"
 
 
 class WhiteboxRequiredError(AppException):
     status_code = status.HTTP_400_BAD_REQUEST
     title = "Whitebox Access Required"
-    problem_type = "https://arena.security/errors/whitebox-required"
+    problem_type = "https://adversarial-arena.com/errors/whitebox-required"
+
+
+_STATUS_DEFAULTS = {
+    400: ("Bad Request", "https://adversarial-arena.com/errors/bad-request"),
+    401: ("Unauthorized", "https://adversarial-arena.com/errors/unauthorized"),
+    403: ("Forbidden", "https://adversarial-arena.com/errors/forbidden"),
+    404: ("Not Found", "https://adversarial-arena.com/errors/not-found"),
+    409: ("Conflict", "https://adversarial-arena.com/errors/conflict"),
+    422: ("Unprocessable Content", "https://adversarial-arena.com/errors/validation-error"),
+    429: ("Rate Limit Exceeded", "https://adversarial-arena.com/errors/rate-limited"),
+    500: ("Internal Server Error", "https://adversarial-arena.com/errors/internal-server-error"),
+    502: ("Bad Gateway", "https://adversarial-arena.com/errors/bad-gateway"),
+    503: ("Service Unavailable", "https://adversarial-arena.com/errors/service-unavailable"),
+}
 
 
 def register_error_handlers(app: FastAPI) -> None:
@@ -114,7 +142,7 @@ def register_error_handlers(app: FastAPI) -> None:
             type=exc.problem_type,
             title=exc.title,
             status=exc.status_code,
-            detail=exc.detail,
+            detail=str(exc.detail),
             instance=str(request.url),
             invalid_params=exc.invalid_params,
         )
@@ -122,6 +150,44 @@ def register_error_handlers(app: FastAPI) -> None:
             status_code=exc.status_code,
             content=problem.model_dump(exclude_none=True),
             media_type="application/problem+json",
+            headers=exc.headers,
+        )
+
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+        default_title, default_type = _STATUS_DEFAULTS.get(
+            exc.status_code,
+            (
+                http.HTTPStatus(exc.status_code).phrase
+                if exc.status_code in http.HTTPStatus._value2member_map_
+                else "HTTP Error",
+                f"https://adversarial-arena.com/errors/{exc.status_code}",
+            ),
+        )
+
+        if isinstance(exc.detail, dict):
+            problem = ProblemDetail(
+                type=exc.detail.get("type", default_type),
+                title=exc.detail.get("title", default_title),
+                status=exc.detail.get("status", exc.status_code),
+                detail=exc.detail.get("detail", str(exc.detail)),
+                instance=str(request.url),
+            )
+        else:
+            problem = ProblemDetail(
+                type=default_type,
+                title=default_title,
+                status=exc.status_code,
+                detail=str(exc.detail),
+                instance=str(request.url),
+            )
+
+        headers = getattr(exc, "headers", None)
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=problem.model_dump(exclude_none=True),
+            media_type="application/problem+json",
+            headers=headers,
         )
 
     @app.exception_handler(RequestValidationError)
@@ -137,7 +203,7 @@ def register_error_handlers(app: FastAPI) -> None:
             for err in exc.errors()
         ]
         problem = ProblemDetail(
-            type="https://arena.security/errors/validation-error",
+            type="https://adversarial-arena.com/errors/validation-error",
             title="Request Validation Failed",
             status=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="One or more fields failed validation checks.",
@@ -152,12 +218,22 @@ def register_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        request_id = request.headers.get("X-Request-ID")
+        if not request_id:
+            try:
+                request_id = structlog.contextvars.get_contextvars().get("request_id")
+            except Exception:
+                pass
+
         problem = ProblemDetail(
-            type="https://arena.security/errors/internal-server-error",
+            type="https://adversarial-arena.com/errors/internal-server-error",
             title="Internal Server Error",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(exc) if app.debug else "An unexpected internal error occurred.",
+            detail=str(exc)
+            if getattr(app, "debug", False)
+            else "An unexpected internal error occurred.",
             instance=str(request.url),
+            request_id=request_id,
         )
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
